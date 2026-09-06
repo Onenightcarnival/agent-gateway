@@ -22,20 +22,27 @@
 
 | 模块 | 职责 | 依赖 |
 | --- | --- | --- |
-| `agent_gateway/__main__.py` | 解析 `--engine/--port/--host`，合并环境变量，启动 uvicorn | config, app |
-| `agent_gateway/config.py` | `Settings`：模型、引擎、超时、权限模式、MCP/skill 配置路径 | 无 |
-| `agent_gateway/app.py` | FastAPI 工厂：装配 store、bus、hub、engine，注册路由，生命周期 | api, core, engines |
-| `agent_gateway/api/` | 路由与错误响应 | core |
-| `agent_gateway/core/models.py` | Session、Message、Part、ToolCall、状态枚举 | 无 |
-| `agent_gateway/core/store.py` | 内存会话仓库 | models |
+| `agent_gateway/__main__.py` | 解析 `--engine/--port/--host`，加载 `.env`，启动 uvicorn | config, app, engines.registry |
+| `agent_gateway/config.py` | `Settings`（环境变量）与 `GatewayFile`（`gateway.json`）、内置系统提示词 | 无 |
+| `agent_gateway/app.py` | FastAPI 工厂：生命周期、错误处理器、路由 | api, gateway |
+| `agent_gateway/gateway.py` | `Gateway`：装配 store / bus / hub / engine，管理进行中的轮次 | core, engines.base |
+| `agent_gateway/api/routes.py` | 全部路由与 SSE 流 | gateway, core |
+| `agent_gateway/api/schemas.py` | 宽松的请求体模型 | 无 |
+| `agent_gateway/api/errors.py` | `{code, message}` 错误格式与异常映射 | 无 |
+| `agent_gateway/core/models.py` | Session、Message、Part、ToolCall | 无 |
+| `agent_gateway/core/store.py` | 内存会话仓库，创建会话目录 | models |
 | `agent_gateway/core/events.py` | EventBus：多订阅者扇出、心跳 | 无 |
-| `agent_gateway/core/turn.py` | TurnRunner：消费 EngineEvent，写消息、发 SSE、状态切换、超时、中止 | models, events, engines.base |
+| `agent_gateway/core/turn.py` | TurnRunner：消费 EngineEvent，写消息、发 SSE、状态切换、超时、中止、收尾 | models, events, engines.base |
 | `agent_gateway/core/interaction.py` | InteractionHub：反问与权限的挂起、回复、超时默认 | events |
-| `agent_gateway/engines/base.py` | `AgentEngine` 协议、`EngineEvent` 类型、`InteractionPort` | 无 |
+| `agent_gateway/engines/base.py` | `AgentEngine` 协议、`EngineEvent`、`InteractionPort` | 无 |
 | `agent_gateway/engines/registry.py` | 引擎名 → 工厂 | engines |
-| `agent_gateway/tools/mcp_config.py` | 读取 `mcpServers` 配置，产出统一连接描述 | 无 |
-| `agent_gateway/tools/skills.py` | 扫描 skill 目录，解析 `SKILL.md` 元数据 | 无 |
+| `agent_gateway/engines/deepagents_engine.py` | deepagents 适配器 | tools |
+| `agent_gateway/engines/openai_agents_engine.py` | openai-agents 适配器 | tools |
+| `agent_gateway/tools/mcp_config.py` | `mcpServers` → 各引擎连接描述 | 无 |
+| `agent_gateway/tools/skills.py` | 扫描 skill 目录，解析 `SKILL.md`，生成 skill 清单提示 | 无 |
 | `agent_gateway/tools/local.py` | 文件读写、目录列举、命令执行（会话目录为根） | 无 |
+| `agent_gateway/tools/permissions.py` | `PermissionGuard`：工具调用前的审批 | engines.base |
+| `agent_gateway/tools/ask_user.py` | `ask_user` 工具工厂 | engines.base |
 
 ## 运行时对象
 

@@ -90,6 +90,8 @@ async def prompt_async(session_id: str, body: PromptBody, request: Request) -> R
         provider_id=body.model.providerID if body.model else None,
         model_id=body.model.modelID if body.model else None,
     )
+    if not (gw.settings.model_name or model.model_id):
+        raise ValidationError("model.modelID is required")
     outcome = await gw.run_turn(session, text, model)
     if outcome.kind == "error":
         raise BadGateway(outcome.message)

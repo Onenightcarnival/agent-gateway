@@ -252,3 +252,13 @@ async def test_sessions_are_isolated(client, workdir, engine: ScriptedEngine):
     await prompt(client, a, "only a")
     assert len((await client.get(f"/session/{a}/message")).json()) == 2
     assert (await client.get(f"/session/{b}/message")).json() == []
+
+
+async def test_unresolvable_model_is_400(client, workdir, engine: ScriptedEngine, settings):
+    settings.model_name = None
+    sid = await create_session(client, workdir)
+    r = await prompt(client, sid, "hi")
+    assert r.status_code == 400
+    assert r.json() == {"code": "VALIDATION_ERROR", "message": "model.modelID is required"}
+    assert engine.prompts == []
+    assert (await client.get(f"/session/{sid}/message")).json() == []

@@ -26,7 +26,7 @@
 | 字段 | 缺省行为 |
 | --- | --- |
 | `POST /session` `title` | 自动生成 |
-| `prompt_async` `model` | 取 `Settings.model_name` |
+| `prompt_async` `model` | `MODEL_NAME` 优先；未设置时取 `model.modelID`；都没有则 400 |
 | `prompt_async` `agent` | 忽略 |
 | `prompt_async` `parts` 中非 `text` | 忽略；全部忽略后为空则 400 |
 | 未知字段 | 忽略 |
@@ -39,7 +39,7 @@
 
 | 状态 | code | 场景 |
 | --- | --- | --- |
-| 400 | `VALIDATION_ERROR` | 请求体校验失败、`directory` 缺失、`parts` 为空 |
+| 400 | `VALIDATION_ERROR` | 请求体校验失败、`directory` 缺失、`parts` 为空、`MODEL_NAME` 与 `model.modelID` 同时缺失 |
 | 404 | `NOT_FOUND` | 会话、问题、权限请求不存在 |
 | 409 | `SESSION_BUSY` | busy 会话再次 `prompt_async` |
 | 502 | `BAD_GATEWAY` | 引擎执行异常 |

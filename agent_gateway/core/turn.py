@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass
 from typing import Literal
 
@@ -71,6 +72,8 @@ class TurnRunner:
         self.session.status = "busy"
         self.session.messages.append(UserMessage(content=self.prompt))
         self._publish_status()
+        started = time.monotonic()
+        log.info("turn start session=%s prompt=%r", self.session.id, self.prompt[:80])
         outcome = TurnOutcome("ok")
         try:
             self._consume_task = asyncio.create_task(self._consume())
@@ -84,6 +87,14 @@ class TurnRunner:
             log.exception("engine failure in session %s", self.session.id)
             outcome = TurnOutcome("error", str(exc) or exc.__class__.__name__)
         self._finalize(outcome)
+        log.info(
+            "turn end session=%s outcome=%s %s elapsed=%.1fs messages=%d",
+            self.session.id,
+            outcome.kind,
+            outcome.message,
+            time.monotonic() - started,
+            len(self.session.messages),
+        )
         return outcome
 
     def abort(self, reason: str = "abort") -> None:
