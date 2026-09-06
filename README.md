@@ -7,8 +7,8 @@ Agent 网关：统一的 HTTP + SSE 接口，底层 Agent 引擎可替换。当�
 ```bash
 uv sync
 cp .env.example .env            # 填入模型地址、密钥、模型名
-uv run agent-gateway --engine deepagents --port 6217
-uv run agent-gateway --engine openai-agents --port 6217
+uv run python -m agent_gateway --engine deepagents --port 6217
+uv run python -m agent_gateway --engine openai-agents --port 6217
 ```
 
 引擎也可由环境变量 `AGENT_ENGINE` 指定；命令行参数优先。

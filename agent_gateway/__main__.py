@@ -1,4 +1,4 @@
-"""入口：agent-gateway --engine <name> [--port 6217] [--host localhost]"""
+"""入口：python -m agent_gateway --engine <name> [--port 6217] [--host localhost]"""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from .engines.registry import ENGINES, create_engine
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(prog="agent-gateway")
+    parser = argparse.ArgumentParser(prog="python -m agent_gateway")
     parser.add_argument("--engine", choices=sorted(ENGINES), help="引擎标识；缺省取 AGENT_ENGINE")
     parser.add_argument("--port", type=int, help="服务端口；缺省取 GATEWAY_PORT 或 6217")
     parser.add_argument("--host", help="监听地址；缺省取 GATEWAY_HOST 或 localhost")

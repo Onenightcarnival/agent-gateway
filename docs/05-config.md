@@ -1,5 +1,13 @@
 # 配置
 
+## 启动
+
+```
+uv run python -m agent_gateway --engine <deepagents|openai-agents> [--port 6217] [--host localhost]
+```
+
+项目不安装为包（`[tool.uv] package = false`），入口固定为模块方式。
+
 ## 启动参数与环境变量
 
 | 参数 | 环境变量 | 默认 | 说明 |
