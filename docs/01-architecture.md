@@ -1,0 +1,71 @@
+# 架构
+
+## 分层
+
+```
+裁判 / 客户端
+      │  HTTP + SSE（网关接口规范 1.2）
+┌─────▼──────────────────────────────────────────────┐
+│ api/        路由、请求校验、错误格式、SSE 推送           │
+├────────────────────────────────────────────────────┤
+│ core/       会话状态机、轮次执行、消息归一化、事件总线、  │
+│             反问/权限队列                             │
+├────────────────────────────────────────────────────┤
+│ engines/    AgentEngine 契约 + 各引擎适配器            │
+│             deepagents_engine  openai_agents_engine  │
+├────────────────────────────────────────────────────┤
+│ tools/      MCP 配置装载、skill 发现、本地工具          │
+└────────────────────────────────────────────────────┘
+```
+
+## 模块
+
+| 模块 | 职责 | 依赖 |
+| --- | --- | --- |
+| `agent_gateway/__main__.py` | 解析 `--engine/--port/--host`，合并环境变量，启动 uvicorn | config, app |
+| `agent_gateway/config.py` | `Settings`：模型、引擎、超时、权限模式、MCP/skill 配置路径 | 无 |
+| `agent_gateway/app.py` | FastAPI 工厂：装配 store、bus、hub、engine，注册路由，生命周期 | api, core, engines |
+| `agent_gateway/api/` | 路由与错误响应 | core |
+| `agent_gateway/core/models.py` | Session、Message、Part、ToolCall、状态枚举 | 无 |
+| `agent_gateway/core/store.py` | 内存会话仓库 | models |
+| `agent_gateway/core/events.py` | EventBus：多订阅者扇出、心跳 | 无 |
+| `agent_gateway/core/turn.py` | TurnRunner：消费 EngineEvent，写消息、发 SSE、状态切换、超时、中止 | models, events, engines.base |
+| `agent_gateway/core/interaction.py` | InteractionHub：反问与权限的挂起、回复、超时默认 | events |
+| `agent_gateway/engines/base.py` | `AgentEngine` 协议、`EngineEvent` 类型、`InteractionPort` | 无 |
+| `agent_gateway/engines/registry.py` | 引擎名 → 工厂 | engines |
+| `agent_gateway/tools/mcp_config.py` | 读取 `mcpServers` 配置，产出统一连接描述 | 无 |
+| `agent_gateway/tools/skills.py` | 扫描 skill 目录，解析 `SKILL.md` 元数据 | 无 |
+| `agent_gateway/tools/local.py` | 文件读写、目录列举、命令执行（会话目录为根） | 无 |
+
+## 运行时对象
+
+启动一次，全局单例：`Settings`、`EventBus`、`SessionStore`、`InteractionHub`、`AgentEngine`。
+
+每个会话：`Session`（状态、消息列表、目录）+ 引擎内部的会话句柄（deepagents 的 thread、openai-agents 的 memory session）。
+
+每轮 `prompt_async`：一个 `TurnRunner` 实例，持有 asyncio Task；中止 = 取消该 Task。
+
+## 一轮请求的流转
+
+```
+POST /session/{id}/prompt_async
+  → store.begin_turn(id)            状态 idle→busy，追加 user 消息
+  → bus.publish(session.status busy)
+  → TurnRunner.run()
+      engine.run(session, prompt, model, interaction) 产出 EngineEvent 流
+      TextDelta      → 当前 assistant 消息 text part 累加，发 message.part.updated
+      ToolCallStart  → tool part(running)，发 message.part.updated
+      ToolCallEnd    → tool part(completed)，追加 tool 消息
+      StepFinish     → 当前 assistant 消息 info.finish，追加 step-finish part
+  → 收尾：最后一条 assistant finish=stop，状态 busy→idle
+  → bus.publish(session.status idle, session.idle)
+  → 204
+异常   → 同样收尾（错误文本写入 assistant 消息）+ session.error + 502
+中止   → 同样收尾（finish=stop，info.aborted=true）+ 204
+超时   → 视为中止，info.aborted_reason=timeout
+客户端断连 → 轮次继续执行，结果留在消息列表
+```
+
+## 引擎切换
+
+`--engine` 参数优先，其次环境变量 `AGENT_ENGINE`。一次启动只装配一个引擎。两个引擎共享同一份 MCP、skill、系统提示词配置，由各自适配器翻译成本引擎的接入方式。

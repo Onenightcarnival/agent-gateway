@@ -1,0 +1,50 @@
+[project]
+name = "agent-gateway"
+version = "0.1.0"
+description = "Agent 网关：统一 HTTP/SSE 接口，可替换的 Agent 引擎"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.141,<1",
+    "uvicorn>=0.52",
+    "pydantic>=2.10",
+    "python-dotenv>=1.0",
+    "pyyaml>=6.0",
+    "mcp>=1.29,<2.0.0",
+    "deepagents==0.7.13",
+    "langchain-openai>=1.6",
+    "langchain-mcp-adapters>=0.3.2",
+    "openai-agents==0.22.0",
+]
+
+[project.scripts]
+agent-gateway = "agent_gateway.__main__:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=9",
+    "pytest-asyncio>=1.0",
+    "httpx>=0.28",
+    "ruff>=0.14",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agent_gateway"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = ["integration: 调用真实模型服务，需要 .env"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ASYNC109", "ASYNC110", "ASYNC240", "E501"]

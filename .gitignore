@@ -183,3 +183,7 @@ cython_debug/
 .idea/
 quest/
 *.DS_Store
+# gateway runtime
+.venv/
+.idea/
+.DS_Store
