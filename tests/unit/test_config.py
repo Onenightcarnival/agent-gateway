@@ -99,10 +99,15 @@ def test_gateway_file_parses_and_resolves_paths(tmp_path: Path):
     assert s.system_prompt("D:/work") == "PROMPT for D:/work"
 
 
-def test_default_system_prompt_mentions_directory(tmp_path: Path):
+def test_default_system_prompt_mentions_directory_and_ask_rule(tmp_path: Path):
     s = Settings(engine="e", model_base_url="u", model_api_key="k", config_path=tmp_path / "x.json")
     assert "D:/work" in s.system_prompt("D:/work")
     assert "{directory}" in DEFAULT_SYSTEM_PROMPT
+    assert "不向用户提问" in s.system_prompt("D:/work")
+    assert "ask_user" not in s.system_prompt("D:/work")
+    s.ask_user = True
+    assert "ask_user" in s.system_prompt("D:/work")
+    assert "不向用户提问" not in s.system_prompt("D:/work")
 
 
 def test_extra_body_from_gateway_file_and_env_override(tmp_path: Path):

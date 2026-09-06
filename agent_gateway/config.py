@@ -10,12 +10,18 @@ from typing import Any, Literal
 
 PermissionMode = Literal["auto", "ask"]
 
+NO_ASK_RULE = "自主完成任务，不向用户提问，不请求确认；信息不足时按最合理的假设执行。"
+ASK_RULE = (
+    "自主完成任务，不请求确认；仅在缺少关键信息且无法合理假设时，"
+    "用 ask_user 工具向用户提问；用户明确要求提问时必须调用它。"
+)
+
 DEFAULT_EXTRA_BODY: dict[str, Any] = {"chat_template_kwargs": {"enable_thinking": False}}
 
 DEFAULT_SYSTEM_PROMPT = """你是一个运行在用户电脑上的办公自动化助手。
 
 工作方式：
-- 自主完成任务，不向用户提问，不请求确认；信息不足时按最合理的假设执行。
+- {interaction_rule}
 - 优先使用可用的工具和 skill 完成实际操作，而不是只给出建议。
 - 每一步操作后用工具核实结果（进程是否启动、文件是否生成、内容是否正确）。
 - 任务完成后用中文简短汇报：做了什么、结果如何、未完成的部分及原因。
@@ -92,7 +98,8 @@ class Settings:
 
     def system_prompt(self, directory: str) -> str:
         template = self.gateway_file.system_prompt or DEFAULT_SYSTEM_PROMPT
-        return template.replace("{directory}", directory)
+        rule = ASK_RULE if self.ask_user else NO_ASK_RULE
+        return template.replace("{directory}", directory).replace("{interaction_rule}", rule)
 
     @classmethod
     def from_env(

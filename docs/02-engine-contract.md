@@ -30,6 +30,8 @@ class AgentEngine(Protocol):
 
 `HistoryMessage`：`role`（`user` / `assistant`）、`content`。只含文本，不含工具轨迹。
 
+`ask_user` 工具描述写明约束：文本里提问会结束本轮且得不到回答，工具是唯一途径；用户明确要求提问时必须调用。
+
 `NullInteraction`：不询问的 `InteractionPort` 实现，反问取首选项、权限一律放行；用于诊断构建。
 
 `ModelRef`：`provider_id`、`model_id`。适配器解析顺序：`Settings.model_name` → `ModelRef.model_id`。

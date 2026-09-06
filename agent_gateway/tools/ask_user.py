@@ -12,7 +12,11 @@ from pydantic import BaseModel, Field
 
 from ..engines.base import InteractionPort, Question, QuestionOption
 
-ASK_USER_DESCRIPTION = "向用户提问并等待回答。仅在缺少关键信息且无法合理假设时使用。"
+ASK_USER_DESCRIPTION = (
+    "向用户提问并阻塞等待其回答，返回用户的答案。这是获得用户回答的唯一方式："
+    "直接在回复文本里提问会立即结束本轮，用户不会看到问题也不会回答。"
+    "缺少关键信息且无法合理假设时调用；用户明确要求提问时必须调用。"
+)
 
 
 class AskUserArgs(BaseModel):
@@ -24,7 +28,9 @@ def make_ask_user(
     session_id: str, interaction: InteractionPort
 ) -> Callable[[str, list[str] | None], Awaitable[str]]:
     async def ask_user(question: str, options: list[str] | None = None) -> str:
-        """向用户提问并等待回答。仅在缺少关键信息且无法合理假设时使用。
+        """向用户提问并阻塞等待其回答，返回用户的答案。这是获得用户回答的唯一方式：
+        直接在回复文本里提问会立即结束本轮，用户不会看到问题也不会回答。
+        缺少关键信息且无法合理假设时调用；用户明确要求提问时必须调用。
 
         Args:
             question: 要问用户的问题。
