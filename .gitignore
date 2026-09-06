@@ -187,3 +187,7 @@ quest/
 .venv/
 .idea/
 .DS_Store
+
+# sqlite
+gateway.db
+gateway.db-*

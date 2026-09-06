@@ -32,6 +32,7 @@ from .models import (
     UserMessage,
     dump,
 )
+from .store import SessionStore
 
 log = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ class TurnRunner:
         self,
         *,
         session: Session,
+        store: SessionStore,
         engine: AgentEngine,
         bus: EventBus,
         interaction: InteractionPort,
@@ -55,6 +57,7 @@ class TurnRunner:
         model: ModelRef,
     ) -> None:
         self.session = session
+        self.store = store
         self.engine = engine
         self.bus = bus
         self.interaction = interaction
@@ -70,7 +73,9 @@ class TurnRunner:
 
     async def run(self) -> TurnOutcome:
         self.session.status = "busy"
+        self.store.save_session(self.session)
         self.session.messages.append(UserMessage(content=self.prompt))
+        self._persist_last()
         self._publish_status()
         started = time.monotonic()
         log.info("turn start session=%s prompt=%r", self.session.id, self.prompt[:80])
@@ -127,6 +132,7 @@ class TurnRunner:
         if self._current is None:
             self._current = AssistantMessage()
             self.session.messages.append(self._current)
+            self._persist_last()
         return self._current
 
     def _on_text(self, text: str) -> None:
@@ -165,9 +171,11 @@ class TurnRunner:
             output=output,
         )
         self._publish_part(msg, part)
+        self._persist(msg)
         self.session.messages.append(
             ToolMessage(tool_call_id=call_id, tool_name=name, content=output)
         )
+        self._persist_last()
 
     def _on_step_finish(self, finish: str) -> None:
         msg = self._assistant()
@@ -175,6 +183,7 @@ class TurnRunner:
         part = StepFinishPart()
         msg.parts.append(part)
         self._publish_part(msg, part)
+        self._persist(msg)
         self._current = None
 
     # ---- 收尾 ----
@@ -206,9 +215,11 @@ class TurnRunner:
                 part = StepFinishPart()
                 msg.parts.append(part)
                 self._publish_part(msg, part)
+            self._persist(msg)
         self._current = None
 
         self.session.status = "idle"
+        self.store.save_session(self.session)
         if outcome.kind == "error":
             self.bus.publish(
                 "session.error",
@@ -222,6 +233,17 @@ class TurnRunner:
         msg.parts.append(part)
         msg.refresh_content()
         self._publish_part(msg, part)
+
+    # ---- 持久化 ----
+
+    def _persist_last(self) -> None:
+        self.store.save_message(self.session, len(self.session.messages) - 1)
+
+    def _persist(self, msg: AssistantMessage) -> None:
+        for index, m in enumerate(self.session.messages):
+            if m is msg:
+                self.store.save_message(self.session, index)
+                return
 
     # ---- 推送 ----
 

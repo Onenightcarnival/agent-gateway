@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
@@ -46,6 +46,12 @@ class SessionContext:
 
 
 @dataclass(frozen=True)
+class HistoryMessage:
+    role: Literal["user", "assistant"]
+    content: str
+
+
+@dataclass(frozen=True)
 class ModelRef:
     provider_id: str | None = None
     model_id: str | None = None
@@ -86,7 +92,9 @@ class AgentEngine(Protocol):
 
     async def stop(self) -> None: ...
 
-    async def open_session(self, session: SessionContext) -> None: ...
+    async def open_session(
+        self, session: SessionContext, history: Sequence[HistoryMessage] = ()
+    ) -> None: ...
 
     async def close_session(self, session_id: str) -> None: ...
 

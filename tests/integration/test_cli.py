@@ -32,6 +32,7 @@ async def test_gateway_starts_with_engine_from_env(engine_name: str, tmp_path: P
         "AGENT_ENGINE": engine_name,
         "GATEWAY_PORT": str(port),
         "GATEWAY_CONFIG": str(tmp_path / "absent.json"),
+        "GATEWAY_DB": str(tmp_path / "gateway.db"),
         "PYTHONUTF8": "1",
     }
     proc = subprocess.Popen(
@@ -43,7 +44,9 @@ async def test_gateway_starts_with_engine_from_env(engine_name: str, tmp_path: P
         text=True,
     )
     try:
-        async with httpx.AsyncClient(base_url=f"http://127.0.0.1:{port}", timeout=60) as client:
+        async with httpx.AsyncClient(
+            base_url=f"http://127.0.0.1:{port}", timeout=60, trust_env=False
+        ) as client:
             deadline = time.monotonic() + 60
             while True:
                 try:

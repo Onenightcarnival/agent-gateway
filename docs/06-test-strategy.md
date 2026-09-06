@@ -24,6 +24,10 @@
 - 反问：`question.asked` → `GET /question` → reply → 引擎收到答案；超时取默认
 - 权限：`ask` 模式挂起，reply `reject` 时工具收到拒绝；`auto` 模式不发事件
 - 配置：环境变量解析与优先级、`gateway.json` 路径解析
+- 存储：SQLite 往返、级联删除、重启后会话与消息可读、引擎收到历史回灌
+- 出站 HTTP：工厂产出的客户端 `trust_env=False`、`verify=False`
+- `ask_user` 的 OpenAI 工具 schema 不含 `anyOf` / `null`
+- 调试页面：`GET /` 返回 HTML
 - 工具：skill 扫描与覆盖规则、`mcpServers` 三种传输解析、本地工具的根目录约束、命令超时与取消时杀进程
 
 ## 集成用例（每个引擎一份，同一测试参数化）

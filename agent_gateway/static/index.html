@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Gateway</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f7f9; --panel: #ffffff; --line: #e3e6ea; --text: #1f2328; --muted: #6b7280;
+    --accent: #2563eb; --accent-text: #ffffff; --ok: #16a34a; --busy: #d97706; --err: #dc2626;
+    --user: #eef2ff; --assistant: #ffffff; --tool: #f8fafc; --code: #f1f5f9;
+    --radius: 10px; --font: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --mono: ui-monospace, "SF Mono", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115; --panel: #171a21; --line: #262b35; --text: #e6e8eb; --muted: #8b94a3;
+      --user: #1e2540; --assistant: #171a21; --tool: #12151b; --code: #0c0e12;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { font: 14px/1.5 var(--font); color: var(--text); background: var(--bg); display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 18px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 15px; margin: 0 8px 0 0; }
+  header .kv { color: var(--muted); }
+  header .kv b { color: var(--text); font-weight: 600; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--muted); }
+  .dot.on { background: var(--ok); }
+  main { flex: 1; display: grid; grid-template-columns: 260px 1fr 360px; min-height: 0; }
+  aside, section { min-height: 0; display: flex; flex-direction: column; }
+  aside { background: var(--panel); border-right: 1px solid var(--line); }
+  .right { background: var(--panel); border-left: 1px solid var(--line); }
+  .box { padding: 12px; border-bottom: 1px solid var(--line); }
+  .box h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 8px; }
+  input, textarea, button, select { font: inherit; color: inherit; }
+  input, textarea { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+  textarea { resize: vertical; min-height: 64px; }
+  button { padding: 7px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  button.danger { color: var(--err); }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row > * { flex: 1; }
+  .row > button { flex: 0 0 auto; }
+  .stack { display: flex; flex-direction: column; gap: 8px; }
+  .scroll { flex: 1; overflow: auto; }
+  .session { padding: 10px 12px; border-bottom: 1px solid var(--line); cursor: pointer; display: flex; gap: 8px; align-items: center; }
+  .session.active { background: var(--user); }
+  .session .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .session .id { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+  .badge { font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid currentColor; }
+  .badge.idle { color: var(--ok); } .badge.busy { color: var(--busy); }
+  .session .del { visibility: hidden; border: 0; background: none; padding: 0 4px; color: var(--muted); }
+  .session:hover .del { visibility: visible; }
+  #messages { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; max-width: 900px; }
+  .msg.user { background: var(--user); align-self: flex-end; }
+  .msg.assistant { background: var(--assistant); }
+  .msg.tool { background: var(--tool); font-family: var(--mono); font-size: 12px; }
+  .msg .meta { display: flex; gap: 8px; color: var(--muted); font-size: 11px; margin-bottom: 4px; font-family: var(--mono); }
+  .msg .text { white-space: pre-wrap; word-break: break-word; }
+  .part-tool { border: 1px dashed var(--line); border-radius: 8px; padding: 6px 8px; margin: 6px 0; font-family: var(--mono); font-size: 12px; }
+  .part-tool summary { cursor: pointer; }
+  .part-tool pre { margin: 6px 0 0; padding: 8px; background: var(--code); border-radius: 6px; overflow: auto; max-height: 240px; white-space: pre-wrap; word-break: break-word; }
+  .st-running { color: var(--busy); } .st-completed { color: var(--ok); } .st-error { color: var(--err); }
+  .step { border-top: 1px dashed var(--line); margin: 8px 0 0; padding-top: 4px; color: var(--muted); font-size: 11px; font-family: var(--mono); }
+  .errbar { color: var(--err); border: 1px solid var(--err); border-radius: 8px; padding: 8px 12px; }
+  .composer { padding: 12px; border-top: 1px solid var(--line); background: var(--panel); }
+  .pending { border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin-bottom: 8px; }
+  .pending .q { font-weight: 600; margin-bottom: 6px; }
+  .pending .opts { display: flex; flex-wrap: wrap; gap: 6px; }
+  #events { font-family: var(--mono); font-size: 11px; }
+  .ev { padding: 4px 12px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; }
+  .ev .t { color: var(--accent); flex: 0 0 170px; }
+  .ev .s { color: var(--muted); flex: 0 0 110px; overflow: hidden; text-overflow: ellipsis; }
+  .ev .p { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .empty { color: var(--muted); padding: 24px; text-align: center; }
+  label.chk { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Agent Gateway</h1>
+  <span class="kv">engine <b id="h-engine">–</b></span>
+  <span class="kv">model <b id="h-model">–</b></span>
+  <span class="kv">tools <b id="h-tools">–</b></span>
+  <span class="kv">skills <b id="h-skills">–</b></span>
+  <span class="kv">permission <b id="h-perm">–</b></span>
+  <span class="kv" style="margin-left:auto"><span class="dot" id="sse-dot"></span>SSE <b id="sse-state">connecting</b></span>
+</header>
+<main>
+  <aside>
+    <div class="box stack">
+      <h2>新建会话</h2>
+      <input id="new-dir" placeholder="directory，如 D:/workspace/case1">
+      <div class="row"><input id="new-title" placeholder="title（可选）"><button class="primary" id="btn-create">创建</button></div>
+    </div>
+    <div class="box" style="padding:8px 12px"><h2 style="margin:0">会话</h2></div>
+    <div class="scroll" id="sessions"><div class="empty">暂无会话</div></div>
+  </aside>
+  <section>
+    <div class="scroll" id="messages"><div class="empty">选择或创建一个会话</div></div>
+    <div class="composer stack">
+      <textarea id="prompt" placeholder="输入指令，Ctrl+Enter 发送"></textarea>
+      <div class="row">
+        <span id="turn-state" style="color:var(--muted)"></span>
+        <button class="danger" id="btn-abort" disabled>中止</button>
+        <button class="primary" id="btn-send" disabled>发送</button>
+      </div>
+    </div>
+  </section>
+  <aside class="right">
+    <div class="box"><h2>待处理</h2><div id="pending"><div class="empty" style="padding:8px">无</div></div></div>
+    <div class="box row" style="padding:8px 12px"><h2 style="margin:0;flex:1">事件流</h2><label class="chk"><input type="checkbox" id="ev-filter" checked style="width:auto">仅当前会话</label><button id="btn-clear">清空</button></div>
+    <div class="scroll" id="events"></div>
+  </aside>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const state = { health: null, sessions: [], current: null, messages: [], pending: {}, events: [] };
+
+const api = async (method, path, body) => {
+  const r = await fetch(path, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+  if (r.status === 204) return null;
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`${data.code || r.status}: ${data.message || r.statusText}`);
+  return data;
+};
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const pretty = (v) => typeof v === "string" ? v : JSON.stringify(v, null, 2);
+
+// ---- 顶栏 ----
+async function loadHealth() {
+  state.health = await api("GET", "/health");
+  $("h-engine").textContent = state.health.engine;
+  $("h-model").textContent = state.health.model;
+  $("h-tools").textContent = state.health.tools.length;
+  $("h-tools").title = state.health.tools.join("\n");
+  $("h-skills").textContent = state.health.skills.length;
+  $("h-skills").title = state.health.skills.join("\n");
+  $("h-perm").textContent = state.health.permission_mode;
+}
+
+// ---- 会话 ----
+async function loadSessions() {
+  state.sessions = await api("GET", "/session");
+  renderSessions();
+}
+function renderSessions() {
+  const box = $("sessions");
+  if (!state.sessions.length) { box.innerHTML = '<div class="empty">暂无会话</div>'; return; }
+  box.innerHTML = state.sessions.map((s) => `
+    <div class="session ${s.id === state.current ? "active" : ""}" data-id="${s.id}">
+      <div style="flex:1;min-width:0"><div class="title" title="${esc(s.directory)}">${esc(s.title)}</div><div class="id">${s.id} · ${s.message_count} msgs</div></div>
+      <span class="badge ${s.status}">${s.status}</span>
+      <button class="del" title="删除" data-del="${s.id}">✕</button>
+    </div>`).join("");
+}
+$("sessions").addEventListener("click", async (e) => {
+  const del = e.target.closest("[data-del]");
+  if (del) { await api("DELETE", `/session/${del.dataset.del}`); if (state.current === del.dataset.del) state.current = null; await loadSessions(); renderMessages(); updateComposer(); return; }
+  const row = e.target.closest("[data-id]");
+  if (row) selectSession(row.dataset.id);
+});
+async function selectSession(id) {
+  state.current = id;
+  renderSessions();
+  await loadMessages();
+  updateComposer();
+  renderEvents();
+}
+$("btn-create").onclick = async () => {
+  const directory = $("new-dir").value.trim();
+  if (!directory) { $("new-dir").focus(); return; }
+  const s = await api("POST", "/session", { directory, title: $("new-title").value.trim() || undefined });
+  $("new-title").value = "";
+  await loadSessions();
+  selectSession(s.id);
+};
+
+// ---- 消息 ----
+async function loadMessages() {
+  if (!state.current) { state.messages = []; renderMessages(); return; }
+  state.messages = await api("GET", `/session/${state.current}/message`);
+  renderMessages();
+}
+function renderPart(p) {
+  if (p.type === "text") return `<div class="text">${esc(p.content)}</div>`;
+  if (p.type === "step-finish") return `<div class="step">step-finish</div>`;
+  if (p.type === "tool") {
+    const st = p.state || {};
+    return `<details class="part-tool"><summary><b>${esc(p.tool)}</b> <span class="st-${st.status}">${esc(st.title || st.status)}</span></summary>
+      <div>args</div><pre>${esc(pretty(p.arguments || {}))}</pre>${st.output != null ? `<div>output</div><pre>${esc(st.output)}</pre>` : ""}</details>`;
+  }
+  return `<pre>${esc(pretty(p))}</pre>`;
+}
+function renderMessage(m) {
+  if (m.role === "user") return `<div class="msg user" data-mid="${m.id}"><div class="meta"><span>user</span><span>${m.created_at}</span></div><div class="text">${esc(m.content)}</div></div>`;
+  if (m.role === "tool") return `<div class="msg tool" data-mid="${m.id}"><div class="meta"><span>tool · ${esc(m.tool_name)}</span><span>${esc(m.tool_call_id)}</span></div><div class="text">${esc(m.content)}</div></div>`;
+  const info = m.info || {};
+  const flags = [info.finish, info.aborted ? "aborted" + (info.aborted_reason ? ":" + info.aborted_reason : "") : "", info.error ? "error" : ""].filter(Boolean).join(" · ");
+  return `<div class="msg assistant" data-mid="${m.id}"><div class="meta"><span>assistant</span><span>${flags}</span><span>${m.created_at}</span></div>${(m.parts || []).map(renderPart).join("")}</div>`;
+}
+function renderMessages() {
+  const box = $("messages");
+  if (!state.current) { box.innerHTML = '<div class="empty">选择或创建一个会话</div>'; return; }
+  box.innerHTML = state.messages.length ? state.messages.map(renderMessage).join("") : '<div class="empty">还没有消息</div>';
+  box.scrollTop = box.scrollHeight;
+}
+function applyPart(messageID, part) {
+  let m = state.messages.find((x) => x.id === messageID);
+  if (!m) { m = { id: messageID, role: "assistant", parts: [], info: {}, created_at: "" }; state.messages.push(m); }
+  m.parts = m.parts || [];
+  if (part.type === "tool") {
+    const i = m.parts.findIndex((p) => p.type === "tool" && p.call_id === part.call_id);
+    if (i >= 0) m.parts[i] = part; else m.parts.push(part);
+  } else if (part.type === "text") {
+    const last = m.parts[m.parts.length - 1];
+    if (last && last.type === "text") last.content = part.content; else m.parts.push(part);
+  } else {
+    m.parts.push(part);
+  }
+  const el = document.querySelector(`[data-mid="${messageID}"]`);
+  const html = renderMessage(m);
+  if (el) el.outerHTML = html; else $("messages").insertAdjacentHTML("beforeend", html);
+  $("messages").scrollTop = $("messages").scrollHeight;
+}
+
+// ---- 发送 / 中止 ----
+function currentStatus() { const s = state.sessions.find((x) => x.id === state.current); return s ? s.status : null; }
+function updateComposer() {
+  const st = currentStatus();
+  $("btn-send").disabled = !state.current || st === "busy";
+  $("btn-abort").disabled = st !== "busy";
+  $("turn-state").textContent = state.current ? `${state.current} · ${st || ""}` : "";
+}
+async function send() {
+  const text = $("prompt").value.trim();
+  if (!text || !state.current) return;
+  const sid = state.current;
+  $("prompt").value = "";
+  if (!state.messages.length) $("messages").innerHTML = "";
+  const local = { id: "local-" + Date.now(), role: "user", content: text, created_at: new Date().toISOString() };
+  state.messages.push(local);
+  $("messages").insertAdjacentHTML("beforeend", renderMessage(local));
+  setStatus(sid, "busy");
+  const model = { providerID: "gateway", modelID: state.health ? state.health.model : "" };
+  try {
+    await api("POST", `/session/${sid}/prompt_async`, { parts: [{ type: "text", text }], model, agent: "assistant" });
+  } catch (e) {
+    if (state.current === sid) $("messages").insertAdjacentHTML("beforeend", `<div class="errbar">${esc(e.message)}</div>`);
+  }
+  if (state.current === sid) await loadMessages();
+  await loadSessions(); updateComposer();
+}
+$("btn-send").onclick = send;
+$("prompt").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) send(); });
+$("btn-abort").onclick = () => state.current && api("POST", `/session/${state.current}/abort`);
+function setStatus(sid, status) { const s = state.sessions.find((x) => x.id === sid); if (s) s.status = status; renderSessions(); updateComposer(); }
+
+// ---- 待处理 ----
+function renderPending() {
+  const items = Object.values(state.pending);
+  const box = $("pending");
+  if (!items.length) { box.innerHTML = '<div class="empty" style="padding:8px">无</div>'; return; }
+  box.innerHTML = items.map((p) => p.kind === "question"
+    ? `<div class="pending"><div class="meta" style="color:var(--muted);font-size:11px">${p.sessionID} · question</div>${p.questions.map((q, qi) => `
+        <div class="q">${esc(q.question)}</div>
+        <div class="opts">${(q.options || []).map((o) => `<button data-q="${p.id}" data-qi="${qi}" data-ans="${esc(o.label)}" title="${esc(o.description || "")}">${esc(o.label)}</button>`).join("")}
+        <input placeholder="自定义回答后回车" data-qfree="${p.id}" data-qi="${qi}" style="flex:1;min-width:120px"></div>`).join("")}</div>`
+    : `<div class="pending"><div class="meta" style="color:var(--muted);font-size:11px">${p.sessionID} · permission</div>
+        <div class="q">${esc(p.permission)}</div><pre style="margin:0 0 6px;white-space:pre-wrap">${esc((p.patterns || []).join("\n"))}</pre>
+        <div class="opts"><button data-perm="${p.id}" data-reply="once">once</button><button data-perm="${p.id}" data-reply="always">always</button><button class="danger" data-perm="${p.id}" data-reply="reject">reject</button></div></div>`).join("");
+}
+$("pending").addEventListener("click", async (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  if (b.dataset.q) { await api("POST", `/question/${b.dataset.q}/reply`, { answers: [[b.dataset.ans]] }); delete state.pending[b.dataset.q]; }
+  if (b.dataset.perm) { await api("POST", `/permission/${b.dataset.perm}/reply`, { reply: b.dataset.reply }); delete state.pending[b.dataset.perm]; }
+  renderPending();
+});
+$("pending").addEventListener("keydown", async (e) => {
+  const i = e.target.closest("[data-qfree]");
+  if (!i || e.key !== "Enter" || !i.value.trim()) return;
+  await api("POST", `/question/${i.dataset.qfree}/reply`, { answers: [[i.value.trim()]] });
+  delete state.pending[i.dataset.qfree]; renderPending();
+});
+
+// ---- 事件流 ----
+function renderEvents() {
+  const only = $("ev-filter").checked && state.current;
+  const list = state.events.filter((e) => !only || !e.properties.sessionID || e.properties.sessionID === state.current);
+  $("events").innerHTML = list.slice(-300).map((e) => `<div class="ev"><span class="t">${e.type}</span><span class="s">${e.properties.sessionID || ""}</span><span class="p" title="${esc(JSON.stringify(e.properties))}">${esc(JSON.stringify(e.properties.part || e.properties.status || e.properties.error || e.properties.permission || e.properties.questions || ""))}</span></div>`).join("");
+  $("events").scrollTop = $("events").scrollHeight;
+}
+$("ev-filter").onchange = renderEvents;
+$("btn-clear").onclick = () => { state.events = []; renderEvents(); };
+function onEvent(ev) {
+  const p = ev.properties || {};
+  if (!["server.heartbeat"].includes(ev.type)) { state.events.push(ev); if (state.events.length > 2000) state.events.shift(); renderEvents(); }
+  switch (ev.type) {
+    case "session.status": setStatus(p.sessionID, p.status.type); if (p.status.type === "idle" && p.sessionID === state.current) loadMessages().then(loadSessions); break;
+    case "session.idle": setStatus(p.sessionID, "idle"); break;
+    case "session.error": if (p.sessionID === state.current) $("messages").insertAdjacentHTML("beforeend", `<div class="errbar">${esc(p.error.message)}</div>`); break;
+    case "message.part.updated": if (p.sessionID === state.current) applyPart(p.messageID, p.part); break;
+    case "question.asked": state.pending[p.id] = { kind: "question", ...p }; renderPending(); break;
+    case "permission.asked": state.pending[p.id] = { kind: "permission", ...p }; renderPending(); break;
+  }
+}
+function connect() {
+  const es = new EventSource("/event");
+  es.onopen = () => { $("sse-dot").classList.add("on"); $("sse-state").textContent = "connected"; loadSessions(); };
+  es.onmessage = (m) => onEvent(JSON.parse(m.data));
+  es.onerror = () => { $("sse-dot").classList.remove("on"); $("sse-state").textContent = "reconnecting"; es.close(); setTimeout(connect, 3000); };
+}
+
+(async () => {
+  await loadHealth();
+  await loadSessions();
+  const pend = await Promise.all([api("GET", "/question"), api("GET", "/permission")]);
+  pend[0].forEach((q) => (state.pending[q.id] = { kind: "question", ...q }));
+  pend[1].forEach((q) => (state.pending[q.id] = { kind: "permission", ...q }));
+  renderPending();
+  connect();
+})();
+</script>
+</body>
+</html>

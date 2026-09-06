@@ -6,7 +6,7 @@ import asyncio
 import copy
 import json
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import AsyncExitStack
 from typing import Any
 
@@ -27,6 +27,7 @@ from openai import AsyncOpenAI
 
 from ..config import Settings
 from ..tools.ask_user import make_ask_user
+from ..tools.http import make_async_client
 from ..tools.local import LocalTools
 from ..tools.mcp_config import parse_mcp_servers, to_openai_agents_server
 from ..tools.permissions import DENIED_MESSAGE, PermissionGuard
@@ -34,6 +35,7 @@ from ..tools.skills import Skill, discover_skills, skills_prompt
 from .base import (
     EngineEvent,
     EngineInfo,
+    HistoryMessage,
     InteractionPort,
     ModelRef,
     SessionContext,
@@ -111,7 +113,9 @@ class OpenAIAgentsEngine:
         set_tracing_disabled(True)
         cfg = self.settings.gateway_file
         self._client = AsyncOpenAI(
-            base_url=self.settings.model_base_url, api_key=self.settings.model_api_key
+            base_url=self.settings.model_base_url,
+            api_key=self.settings.model_api_key,
+            http_client=make_async_client(),
         )
         tool_names: list[str] = []
         for spec in parse_mcp_servers(cfg.mcp_servers):
@@ -132,8 +136,12 @@ class OpenAIAgentsEngine:
     async def stop(self) -> None:
         await self._stack.aclose()
 
-    async def open_session(self, session: SessionContext) -> None:
-        self._sessions[session.id] = MemorySession(session.id)
+    async def open_session(
+        self, session: SessionContext, history: Sequence[HistoryMessage] = ()
+    ) -> None:
+        memory = MemorySession(session.id)
+        await memory.add_items([{"role": h.role, "content": h.content} for h in history])
+        self._sessions[session.id] = memory
 
     async def close_session(self, session_id: str) -> None:
         self._sessions.pop(session_id, None)

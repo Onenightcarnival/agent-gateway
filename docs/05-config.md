@@ -11,6 +11,7 @@
 | | `MODEL_API_KEY` | 无，必填 | |
 | | `MODEL_NAME` | 无 | 为空时使用请求里的 `model.modelID` |
 | | `GATEWAY_CONFIG` | `./gateway.json` | 引擎共享配置文件；不存在则全部使用默认 |
+| | `GATEWAY_DB` | `./gateway.db` | SQLite 文件；`:memory:` 表示不落盘 |
 | | `GATEWAY_TURN_TIMEOUT` | `900` | 秒，单轮上限 |
 | | `GATEWAY_QUESTION_TIMEOUT` | `120` | 秒，反问无人回复则取默认答案 |
 | | `GATEWAY_PERMISSION_MODE` | `auto` | `auto` 直接放行，不发事件；`ask` 挂起等待回复，超时按 `once` 放行 |

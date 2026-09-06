@@ -30,7 +30,7 @@
 | `agent_gateway/api/schemas.py` | 宽松的请求体模型 | 无 |
 | `agent_gateway/api/errors.py` | `{code, message}` 错误格式与异常映射 | 无 |
 | `agent_gateway/core/models.py` | Session、Message、Part、ToolCall | 无 |
-| `agent_gateway/core/store.py` | 内存会话仓库，创建会话目录 | models |
+| `agent_gateway/core/store.py` | SQLite 会话仓库：内存工作集 + 写穿，启动时装载 | models |
 | `agent_gateway/core/events.py` | EventBus：多订阅者扇出、心跳 | 无 |
 | `agent_gateway/core/turn.py` | TurnRunner：消费 EngineEvent，写消息、发 SSE、状态切换、超时、中止、收尾 | models, events, engines.base |
 | `agent_gateway/core/interaction.py` | InteractionHub：反问与权限的挂起、回复、超时默认 | events |
@@ -43,6 +43,8 @@
 | `agent_gateway/tools/local.py` | 文件读写、目录列举、命令执行（会话目录为根） | 无 |
 | `agent_gateway/tools/permissions.py` | `PermissionGuard`：工具调用前的审批 | engines.base |
 | `agent_gateway/tools/ask_user.py` | `ask_user` 工具工厂 | engines.base |
+| `agent_gateway/tools/http.py` | httpx 客户端工厂：`trust_env=False, verify=False` | 无 |
+| `agent_gateway/static/index.html` | 调试页面，单文件，无外部依赖 | 无 |
 
 ## 运行时对象
 
@@ -72,6 +74,16 @@ POST /session/{id}/prompt_async
 超时   → 视为中止，info.aborted_reason=timeout
 客户端断连 → 轮次继续执行，结果留在消息列表
 ```
+
+## 持久化
+
+SQLite 单文件（`GATEWAY_DB`，默认 `gateway.db`）。内存中的 `Session` 对象是工作集，仓库在下列时机写穿：创建/删除会话、状态变更、user 消息追加、tool 消息追加、每次 step-finish、轮次收尾。
+
+启动时装载全部会话，状态一律置为 `idle`，并把 user/assistant 文本历史交给 `engine.open_session(session, history)` 回灌引擎记忆。
+
+## 出站 HTTP
+
+所有出站 httpx 客户端由 `tools/http.py` 创建：`trust_env=False`（忽略系统代理环境变量）、`verify=False`。注入点：`ChatOpenAI(http_client, http_async_client)`、`AsyncOpenAI(http_client)`、MCP `streamable_http` / `sse` 的 `httpx_client_factory`。
 
 ## 引擎切换
 

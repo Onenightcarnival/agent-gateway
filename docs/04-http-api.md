@@ -7,6 +7,8 @@
 | 方法 | 路径 | 响应 | 备注 |
 | --- | --- | --- | --- |
 | GET | `/health` | `{engine, model, tools, skills, sessions}` | 规范外，部署自检 |
+| GET | `/`、`/ui` | 调试页面 HTML | 规范外 |
+| GET | `/session` | `SessionSummary[]` | 规范外，调试页面用 |
 | POST | `/session` | 200 Session 摘要 | `directory` 必填；`title` 可缺省 |
 | GET | `/session/status` | `{id: {type}}` | 注册顺序先于 `/session/{id}` |
 | GET | `/session/{id}` | Session 摘要 + `message_count` | |

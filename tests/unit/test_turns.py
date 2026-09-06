@@ -209,7 +209,7 @@ async def test_client_disconnect_does_not_cancel_turn(
 ):
     engine.script = [Sleep(0.6), *plain_reply("finished anyway")]
     sid = await create_session(client, workdir)
-    async with httpx.AsyncClient(base_url=server, timeout=0.2) as short:
+    async with httpx.AsyncClient(base_url=server, timeout=0.2, trust_env=False) as short:
         try:
             await prompt(short, sid, "go")
         except httpx.ReadTimeout:

@@ -70,6 +70,7 @@ def settings(engine_name: str, gateway_config: Path) -> Settings:
     s = Settings.from_env(engine=engine_name)
     s.config_path = gateway_config
     s.turn_timeout = 180
+    s.db_path = None
     s.question_timeout = 1
     return s
 
@@ -92,7 +93,7 @@ async def server(settings: Settings) -> AsyncIterator[str]:
 
 @pytest.fixture
 async def client(server: str) -> AsyncIterator[httpx.AsyncClient]:
-    async with httpx.AsyncClient(base_url=server, timeout=200) as c:
+    async with httpx.AsyncClient(base_url=server, timeout=200, trust_env=False) as c:
         yield c
 
 

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from agent_gateway.tools.http import mcp_client_factory
 from agent_gateway.tools.local import LocalTools
 from agent_gateway.tools.mcp_config import (
     parse_mcp_servers,
@@ -71,11 +72,13 @@ def test_parse_mcp_servers_stdio_and_http():
     assert lc["command"] == "uv"
     assert lc["args"] == ["run", "srv"]
     assert lc["cwd"] == "/w"
-    assert to_langchain_connection(remote) == {
-        "transport": "streamable_http",
-        "url": "http://h/mcp",
-        "headers": {"X": "y"},
-    }
+    remote_conn = to_langchain_connection(remote)
+    assert remote_conn["transport"] == "streamable_http"
+    assert remote_conn["url"] == "http://h/mcp"
+    assert remote_conn["headers"] == {"X": "y"}
+    assert remote_conn["httpx_client_factory"] is mcp_client_factory
+    oa_remote = to_openai_agents_server(remote)
+    assert oa_remote.params["httpx_client_factory"] is mcp_client_factory
     assert type(to_openai_agents_server(local)).__name__ == "MCPServerStdio"
     assert type(to_openai_agents_server(remote)).__name__ == "MCPServerStreamableHttp"
     assert type(to_openai_agents_server(events)).__name__ == "MCPServerSse"
@@ -122,3 +125,33 @@ async def test_run_command_timeout_and_cancel_kill_the_process(tmp_path: Path):
 
 def test_windows_env_flags_are_set_for_children():
     assert os.environ.get("PYTHONUTF8") in (None, "1")
+
+
+# ---- ask_user ----
+
+
+def test_ask_user_langchain_schema_has_no_anyof_or_null():
+    import json
+
+    from langchain_core.utils.function_calling import convert_to_openai_tool
+
+    from agent_gateway.tools.ask_user import make_ask_user_langchain_tool
+
+    class Port:
+        async def ask_question(self, *a):
+            return [[]]
+
+        async def ask_permission(self, *a):
+            return "always"
+
+    spec = convert_to_openai_tool(make_ask_user_langchain_tool("s", Port()))
+    text = json.dumps(spec)
+    assert "anyOf" not in text
+    assert "null" not in text
+    params = spec["function"]["parameters"]
+    assert params["required"] == ["question"]
+    assert params["properties"]["options"] == {
+        "description": "可选项；为空表示自由回答",
+        "items": {"type": "string"},
+        "type": "array",
+    }

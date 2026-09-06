@@ -33,6 +33,7 @@ def settings(tmp_path: Path) -> Settings:
         question_timeout=0.5,
         permission_mode="ask",
         config_path=tmp_path / "gateway.json",
+        db_path=None,
     )
 
 
@@ -57,7 +58,7 @@ async def server(settings: Settings, engine: ScriptedEngine) -> AsyncIterator[st
 
 @pytest.fixture
 async def client(server: str) -> AsyncIterator[httpx.AsyncClient]:
-    async with httpx.AsyncClient(base_url=server, timeout=10) as c:
+    async with httpx.AsyncClient(base_url=server, timeout=10, trust_env=False) as c:
         yield c
 
 

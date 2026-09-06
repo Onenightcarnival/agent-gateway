@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 from typing import Any
@@ -12,21 +12,23 @@ from typing import Any
 from deepagents import create_deep_agent
 from deepagents.backends import LocalShellBackend
 from langchain.agents.middleware.types import AgentMiddleware, ToolCallRequest
-from langchain_core.messages import HumanMessage, ToolMessage
-from langchain_core.tools import BaseTool, StructuredTool
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.tools import load_mcp_tools
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import InMemorySaver
 
 from ..config import Settings
-from ..tools.ask_user import make_ask_user
+from ..tools.ask_user import make_ask_user_langchain_tool
+from ..tools.http import make_async_client, make_sync_client
 from ..tools.mcp_config import parse_mcp_servers, to_langchain_connection
 from ..tools.permissions import DENIED_MESSAGE, PermissionGuard
 from ..tools.skills import Skill, discover_skills
 from .base import (
     EngineEvent,
     EngineInfo,
+    HistoryMessage,
     InteractionPort,
     ModelRef,
     SessionContext,
@@ -65,6 +67,7 @@ class PermissionMiddleware(AgentMiddleware):
 class _SessionState:
     context: SessionContext
     checkpointer: InMemorySaver = field(default_factory=InMemorySaver)
+    history: list[HistoryMessage] = field(default_factory=list)
     agents: dict[str, tuple[Any, PermissionMiddleware]] = field(default_factory=dict)
 
 
@@ -133,8 +136,10 @@ class DeepAgentsEngine:
     async def stop(self) -> None:
         await self._stack.aclose()
 
-    async def open_session(self, session: SessionContext) -> None:
-        self._sessions[session.id] = _SessionState(context=session)
+    async def open_session(
+        self, session: SessionContext, history: Sequence[HistoryMessage] = ()
+    ) -> None:
+        self._sessions[session.id] = _SessionState(context=session, history=list(history))
 
     async def close_session(self, session_id: str) -> None:
         self._sessions.pop(session_id, None)
@@ -148,12 +153,13 @@ class DeepAgentsEngine:
             base_url=self.settings.model_base_url,
             api_key=self.settings.model_api_key,
             streaming=True,
+            http_client=make_sync_client(),
+            http_async_client=make_async_client(),
         )
         backend = LocalShellBackend(root_dir=directory, virtual_mode=False, inherit_env=True)
-        ask_user = make_ask_user(state.context.id, interaction)
         tools: list[Any] = [
             *self._mcp_tools,
-            StructuredTool.from_function(coroutine=ask_user, name="ask_user"),
+            make_ask_user_langchain_tool(state.context.id, interaction),
         ]
         permission = PermissionMiddleware(
             PermissionGuard(state.context.id, interaction, self.settings)
@@ -168,6 +174,19 @@ class DeepAgentsEngine:
             middleware=[permission],
             checkpointer=state.checkpointer,
         )
+        if state.history:
+            agent.update_state(
+                {"configurable": {"thread_id": state.context.id}},
+                {
+                    "messages": [
+                        HumanMessage(content=h.content)
+                        if h.role == "user"
+                        else AIMessage(content=h.content)
+                        for h in state.history
+                    ]
+                },
+            )
+            state.history = []
         return agent, permission
 
     def _agent_for(self, state: _SessionState, model_name: str, interaction: InteractionPort):

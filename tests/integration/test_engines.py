@@ -59,7 +59,12 @@ async def test_skill_is_loaded_and_followed(client, workdir):
 
 async def test_mcp_tool_is_callable(client, workdir):
     sid = await create_session(client, workdir)
-    msgs = await ask(client, sid, "调用 get_magic_number 工具，然后只回复得到的数字。")
+    msgs = await ask(
+        client,
+        sid,
+        "直接调用名为 get_magic_number 的函数工具（它不是 shell 命令，不要用 execute 或 run_command 运行它），"
+        "然后只回复它返回的数字。",
+    )
     assert "4242" in assert_final(msgs)["content"]
     tool_msg = next(m for m in msgs if m["role"] == "tool" and m["tool_name"] == "get_magic_number")
     assert "4242" in tool_msg["content"]

@@ -5,9 +5,10 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 from fastapi import APIRouter, Request, Response
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from ..core.interaction import RequestNotFound
 from ..core.models import dump
@@ -19,6 +20,8 @@ from .schemas import CreateSessionBody, PermissionReplyBody, PromptBody, Questio
 
 router = APIRouter()
 
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+
 
 def _gw(request: Request) -> Gateway:
     return request.app.state.gateway
@@ -29,6 +32,15 @@ def _session(gw: Gateway, session_id: str):
         return gw.store.get(session_id)
     except SessionNotFound:
         raise NotFound("Session not found") from None
+
+
+# ---- 调试页面 ----
+
+
+@router.get("/", include_in_schema=False)
+@router.get("/ui", include_in_schema=False)
+async def debug_ui() -> FileResponse:
+    return FileResponse(STATIC_DIR / "index.html", media_type="text/html; charset=utf-8")
 
 
 # ---- 健康 ----
@@ -56,6 +68,11 @@ async def create_session(body: CreateSessionBody, request: Request) -> dict:
     if not body.directory:
         raise ValidationError("directory is required")
     return await _gw(request).create_session(body.directory, body.title)
+
+
+@router.get("/session")
+async def list_sessions(request: Request) -> list[dict]:
+    return [{**s.summary(), "message_count": len(s.messages)} for s in _gw(request).store.all()]
 
 
 @router.get("/session/status")

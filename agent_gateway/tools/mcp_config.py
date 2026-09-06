@@ -6,6 +6,8 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from .http import mcp_client_factory
+
 Transport = Literal["stdio", "streamable_http", "sse"]
 
 
@@ -65,7 +67,12 @@ def to_langchain_connection(spec: McpServerSpec) -> dict[str, Any]:
             "env": spec.full_env(),
             "cwd": spec.cwd,
         }
-    return {"transport": spec.transport, "url": spec.url, "headers": spec.headers}
+    return {
+        "transport": spec.transport,
+        "url": spec.url,
+        "headers": spec.headers,
+        "httpx_client_factory": mcp_client_factory,
+    }
 
 
 def to_openai_agents_server(spec: McpServerSpec):
@@ -82,6 +89,7 @@ def to_openai_agents_server(spec: McpServerSpec):
             },
             **common,
         )
+    params = {"url": spec.url, "headers": spec.headers, "httpx_client_factory": mcp_client_factory}
     if spec.transport == "sse":
-        return MCPServerSse(params={"url": spec.url, "headers": spec.headers}, **common)
-    return MCPServerStreamableHttp(params={"url": spec.url, "headers": spec.headers}, **common)
+        return MCPServerSse(params=params, **common)
+    return MCPServerStreamableHttp(params=params, **common)

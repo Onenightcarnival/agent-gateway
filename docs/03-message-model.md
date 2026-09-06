@@ -69,3 +69,12 @@ assistant  finish=stop        parts=[text, step-finish]
 | `permission.asked` | `sessionID`, `id`, `permission`, `patterns[]` |
 
 SSE 不重放历史。消息列表是事实来源。
+
+## 存储
+
+```
+sessions(id PK, title, directory, created_at, status)
+messages(id PK, session_id → sessions.id ON DELETE CASCADE, seq, role, body JSON)
+```
+
+`body` 为消息的完整 JSON；`seq` 为消息在会话内的序号。装载时按 `seq` 排序还原为模型对象。

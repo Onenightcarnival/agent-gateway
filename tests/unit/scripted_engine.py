@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 from agent_gateway.engines.base import (
     EngineEvent,
     EngineInfo,
+    HistoryMessage,
     InteractionPort,
     ModelRef,
     Question,
@@ -50,6 +51,7 @@ class ScriptedEngine:
     prompts: list[tuple[str, str]] = field(default_factory=list)
     models: list[ModelRef] = field(default_factory=list)
     opened: list[SessionContext] = field(default_factory=list)
+    histories: list[list[HistoryMessage]] = field(default_factory=list)
     closed: list[str] = field(default_factory=list)
     cancelled: int = 0
     started: bool = False
@@ -63,8 +65,11 @@ class ScriptedEngine:
     async def stop(self) -> None:
         self.stopped = True
 
-    async def open_session(self, session: SessionContext) -> None:
+    async def open_session(
+        self, session: SessionContext, history: Sequence[HistoryMessage] = ()
+    ) -> None:
         self.opened.append(session)
+        self.histories.append(list(history))
 
     async def close_session(self, session_id: str) -> None:
         self.closed.append(session_id)

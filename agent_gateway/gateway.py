@@ -8,10 +8,10 @@ import logging
 from .config import Settings
 from .core.events import EventBus
 from .core.interaction import InteractionHub
-from .core.models import Session
+from .core.models import AssistantMessage, Session, UserMessage
 from .core.store import SessionStore
 from .core.turn import TurnOutcome, TurnRunner
-from .engines.base import AgentEngine, EngineInfo, ModelRef, SessionContext
+from .engines.base import AgentEngine, EngineInfo, HistoryMessage, ModelRef, SessionContext
 
 log = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ class Gateway:
     def __init__(self, settings: Settings, engine: AgentEngine) -> None:
         self.settings = settings
         self.engine = engine
-        self.store = SessionStore()
+        self.store = SessionStore(settings.db_path)
         self.bus = EventBus()
         self.hub = InteractionHub(self.bus, settings)
         self.engine_info: EngineInfo | None = None
@@ -28,6 +28,8 @@ class Gateway:
 
     async def startup(self) -> None:
         self.engine_info = await self.engine.start()
+        for session in self.store.all():
+            await self.engine.open_session(_context(session), _history(session))
         log.info(
             "engine=%s model=%s tools=%d skills=%d",
             self.engine_info.name,
@@ -40,12 +42,11 @@ class Gateway:
         for session_id in list(self._turns):
             await self.abort_turn(session_id)
         await self.engine.stop()
+        self.store.close()
 
     async def create_session(self, directory: str, title: str | None) -> dict:
         session = self.store.create(directory, title)
-        await self.engine.open_session(
-            SessionContext(id=session.id, directory=session.directory, title=session.title)
-        )
+        await self.engine.open_session(_context(session))
         return session.summary()
 
     async def delete_session(self, session_id: str) -> None:
@@ -57,6 +58,7 @@ class Gateway:
     async def run_turn(self, session: Session, prompt: str, model: ModelRef) -> TurnOutcome:
         runner = TurnRunner(
             session=session,
+            store=self.store,
             engine=self.engine,
             bus=self.bus,
             interaction=self.hub,
@@ -76,3 +78,17 @@ class Gateway:
         runner, task = entry
         runner.abort()
         await asyncio.shield(task)
+
+
+def _context(session: Session) -> SessionContext:
+    return SessionContext(id=session.id, directory=session.directory, title=session.title)
+
+
+def _history(session: Session) -> list[HistoryMessage]:
+    out: list[HistoryMessage] = []
+    for m in session.messages:
+        if isinstance(m, UserMessage):
+            out.append(HistoryMessage(role="user", content=m.content))
+        elif isinstance(m, AssistantMessage) and m.content.strip():
+            out.append(HistoryMessage(role="assistant", content=m.content))
+    return out

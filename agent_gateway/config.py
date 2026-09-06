@@ -50,6 +50,10 @@ class GatewayFile:
         )
 
 
+def _db_path(value: str) -> Path | None:
+    return None if value.strip() in ("", ":memory:") else Path(value)
+
+
 @dataclass
 class Settings:
     engine: str
@@ -59,6 +63,7 @@ class Settings:
     host: str = "localhost"
     port: int = 6217
     config_path: Path = Path("gateway.json")
+    db_path: Path | None = Path("gateway.db")
     turn_timeout: float = 900.0
     question_timeout: float = 120.0
     permission_mode: PermissionMode = "auto"
@@ -101,6 +106,7 @@ class Settings:
             host=host or e.get("GATEWAY_HOST", "localhost"),
             port=port or int(e.get("GATEWAY_PORT", "6217")),
             config_path=Path(e.get("GATEWAY_CONFIG", "gateway.json")),
+            db_path=_db_path(e.get("GATEWAY_DB", "gateway.db")),
             turn_timeout=float(e.get("GATEWAY_TURN_TIMEOUT", "900")),
             question_timeout=float(e.get("GATEWAY_QUESTION_TIMEOUT", "120")),
             permission_mode="ask" if e.get("GATEWAY_PERMISSION_MODE") == "ask" else "auto",
