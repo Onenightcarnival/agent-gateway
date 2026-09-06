@@ -75,6 +75,23 @@ def _chunk_text(chunk: Any) -> str:
     return text() if callable(text) else ""
 
 
+def _tool_output_text(output: Any) -> str:
+    """ToolMessage / Command(update={"messages": [...]}) / 任意值 → 文本。"""
+    update = getattr(output, "update", None)
+    if isinstance(update, dict) and update.get("messages"):
+        output = update["messages"][-1]
+    if isinstance(output, ToolMessage):
+        output = output.content
+    if isinstance(output, str):
+        return output
+    if isinstance(output, list):
+        return _content_text(output)
+    try:
+        return json.dumps(output, ensure_ascii=False, default=str)
+    except TypeError:
+        return str(output)
+
+
 def _content_text(content: Any) -> str:
     if isinstance(content, str):
         return content
@@ -261,17 +278,8 @@ class _EventMapper:
     def _tool_end(self, name: str, output: Any) -> ToolCallEnd:
         call_id = self._pop_call_id(name, getattr(output, "tool_call_id", None))
         is_error = getattr(output, "status", None) == "error"
-        content = output.content if isinstance(output, ToolMessage) else output
-        if not isinstance(content, str):
-            try:
-                content = json.dumps(content, ensure_ascii=False, default=str)
-            except TypeError:
-                content = str(content)
         return ToolCallEnd(
-            call_id=call_id,
-            name=name,
-            output=_content_text(content) if isinstance(content, list) else content,
-            is_error=is_error,
+            call_id=call_id, name=name, output=_tool_output_text(output), is_error=is_error
         )
 
     def _pop_call_id(self, name: str, call_id: str | None) -> str:

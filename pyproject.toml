@@ -47,4 +47,4 @@ testpaths = ["tests"]
 markers = ["integration: 调用真实模型服务，需要 .env"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["ASYNC109", "ASYNC110", "ASYNC240", "E501"]
+"tests/**" = ["ASYNC109", "ASYNC110", "ASYNC220", "ASYNC240", "E501"]

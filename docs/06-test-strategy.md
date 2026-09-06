@@ -5,7 +5,9 @@
 | 层 | 目录 | 引擎 | 模型 | 运行 |
 | --- | --- | --- | --- | --- |
 | 单元 | `tests/unit/` | 测试内 `ScriptedEngine`（按脚本产出 EngineEvent） | 无 | `uv run pytest tests/unit` |
-| 集成 | `tests/integration/` | 真实 deepagents / openai-agents | `.env` 指向的真实服务，chat completions | `uv run pytest -m integration` |
+| 集成 | `tests/integration/` | 真实 deepagents / openai-agents | `.env` 指向的真实服务，chat completions | `uv run pytest tests/integration` |
+
+单元层用 uvicorn 在进程内起真实 HTTP 服务，覆盖 SSE 长连接和客户端断连。集成层每个用例独立起一个网关（含 MCP 子进程）；`test_cli.py` 以子进程方式启动 `python -m agent_gateway`，验证 `AGENT_ENGINE` 环境变量切换引擎。
 
 `ScriptedEngine` 只用于验证网关本身：状态机、消息归一化、SSE、中止、超时、错误收尾、反问与权限。模型不做 mock。
 
@@ -20,7 +22,9 @@
 - 引擎异常：502，`session.error`，最后消息 finish=stop
 - 客户端断连：轮次继续完成
 - 反问：`question.asked` → `GET /question` → reply → 引擎收到答案；超时取默认
-- 权限：`ask` 模式挂起，reply `reject` 时工具收到拒绝
+- 权限：`ask` 模式挂起，reply `reject` 时工具收到拒绝；`auto` 模式不发事件
+- 配置：环境变量解析与优先级、`gateway.json` 路径解析
+- 工具：skill 扫描与覆盖规则、`mcpServers` 三种传输解析、本地工具的根目录约束、命令超时与取消时杀进程
 
 ## 集成用例（每个引擎一份，同一测试参数化）
 
@@ -32,6 +36,8 @@
 - skill：读取测试 skill 并按其指令行动
 - MCP：连接测试用 stdio MCP 服务并调用其工具
 - 中止：长任务中途 abort 后状态回 idle
+- 权限：`ask` 模式下拒绝 `execute` / `run_command`，轨迹里出现拒绝结果
+- 入口：子进程启动网关，`/health` 报告环境变量指定的引擎，一轮对话成功；未知引擎与缺失引擎退出码 2
 
 ## 夹具
 
