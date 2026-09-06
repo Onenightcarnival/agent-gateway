@@ -23,20 +23,28 @@ def _free_port() -> int:
 
 
 @pytest.mark.parametrize("engine_name", sorted(ENGINES))
-async def test_gateway_starts_with_engine_from_env(engine_name: str, tmp_path: Path):
+@pytest.mark.parametrize("via", ["flag", "env"])
+async def test_gateway_starts_with_selected_engine(engine_name: str, via: str, tmp_path: Path):
     if not os.environ.get("MODEL_BASE_URL"):
         pytest.skip("MODEL_BASE_URL not configured")
     port = _free_port()
     env = {
-        **os.environ,
-        "AGENT_ENGINE": engine_name,
-        "GATEWAY_PORT": str(port),
+        **{k: v for k, v in os.environ.items() if k != "AGENT_ENGINE"},
         "GATEWAY_CONFIG": str(tmp_path / "absent.json"),
         "GATEWAY_DB": str(tmp_path / "gateway.db"),
         "PYTHONUTF8": "1",
     }
+    other = next(n for n in sorted(ENGINES) if n != engine_name)
+    if via == "flag":
+        env["AGENT_ENGINE"] = other
+        env["GATEWAY_PORT"] = str(_free_port())
+        argv = ["--engine", engine_name, "--port", str(port), "--host", "127.0.0.1"]
+    else:
+        env["AGENT_ENGINE"] = engine_name
+        env["GATEWAY_PORT"] = str(port)
+        argv = []
     proc = subprocess.Popen(
-        [sys.executable, "-m", "agent_gateway"],
+        [sys.executable, "-m", "agent_gateway", *argv],
         cwd=ROOT,
         env=env,
         stdout=subprocess.PIPE,

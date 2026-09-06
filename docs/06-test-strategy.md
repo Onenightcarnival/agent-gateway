@@ -43,7 +43,27 @@
 - MCP：连接测试用 stdio MCP 服务并调用其工具
 - 中止：长任务中途 abort 后状态回 idle
 - 权限：`ask` 模式下拒绝 `execute` / `run_command`，轨迹里出现拒绝结果
-- 入口：子进程启动网关，`/health` 报告环境变量指定的引擎，一轮对话成功；未知引擎与缺失引擎退出码 2
+- 入口：子进程启动网关，`--engine` 参数与 `AGENT_ENGINE` 环境变量各一遍（参数优先于环境变量），`/health` 报告所选引擎，一轮对话成功；未知引擎与缺失引擎退出码 2
+- 会话增删查：创建、获取、`/session/status`、删除后 404；缺 `directory` 400；错误体为 `{code, message}`
+- 引擎错误：请求携带不存在的模型名，返回 502 `BAD_GATEWAY`，SSE 有 `session.error`，末条 assistant `finish=stop` 且带 `info.error`
+- 反问：模型调用 `ask_user`，`question.asked` → `GET /question` → 回复 → 最终回复包含所选项
+- SSE：一轮工具调用中收到 `server.connected`、`session.status` busy→idle、`message.part.updated`（text / tool running→completed / step-finish）、`session.idle`，以及 15 秒 `server.heartbeat`
+
+## 附录 B 对照
+
+| 清单项 | 集成用例 |
+| --- | --- |
+| 创建、获取、删除会话 | `test_session_crud_and_error_format` |
+| 发送消息并接收回复 | `test_plain_chat`、`test_tool_call_writes_file_in_session_directory` |
+| 反问 | `test_question_round_trip_with_real_engine` |
+| 权限请求 | `test_permission_ask_mode_rejects_tool` |
+| SSE 全部事件类型 | `test_sse_event_types_and_status_transitions`（含心跳）、`test_engine_error_surfaces_as_502_and_session_error`（session.error）、反问与权限用例（question.asked / permission.asked） |
+| idle ↔ busy | `test_sse_event_types_and_status_transitions`、`test_abort_long_running_command` |
+| 中止 | `test_abort_long_running_command` |
+| 错误格式 | `test_session_crud_and_error_format`（400 / 404）、`test_engine_error_surfaces_as_502_and_session_error`（502） |
+| directory 隔离 | `test_tool_call_writes_file_in_session_directory`、`test_session_memory_and_isolation` |
+| 两种引擎 | 全部用例按 `ENGINES` 参数化 |
+| `--engine` 切换 | `test_cli.py::test_gateway_starts_with_selected_engine[flag]` |
 
 ## 夹具
 

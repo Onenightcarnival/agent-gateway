@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from agent_gateway.app import create_app
 from agent_gateway.config import Settings
 from agent_gateway.engines.registry import ENGINES, create_engine
+from tests.sse import SseCollector
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "tests" / "fixtures"
@@ -23,6 +24,8 @@ FIXTURES = ROOT / "tests" / "fixtures"
 load_dotenv(ROOT / ".env")
 
 pytestmark = pytest.mark.integration
+
+__all__ = ["SseCollector"]
 
 
 def pytest_collection_modifyitems(items):

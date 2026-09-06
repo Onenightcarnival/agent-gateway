@@ -3,7 +3,7 @@ import sys
 
 from agent_gateway.config import Settings
 
-from .conftest import ask, assert_final, create_session
+from .conftest import SseCollector, ask, assert_final, create_session
 
 
 async def test_health(client, engine_name):
@@ -132,3 +132,119 @@ async def test_ask_user_disabled_by_default(engine_name, gateway_config, workdir
         assert "ask_user" in engine.tool_names_for(ctx)
     finally:
         await engine.stop()
+
+
+# ---- 附录 B 清单补充 ----
+
+
+async def test_session_crud_and_error_format(client, workdir):
+    r = await client.post("/session", json={"title": "案例 1", "directory": str(workdir)})
+    assert r.status_code == 200
+    sid = r.json()["id"]
+    assert r.json()["status"] == "idle"
+    assert workdir.is_dir()
+
+    got = (await client.get(f"/session/{sid}")).json()
+    assert got["title"] == "案例 1"
+    assert got["message_count"] == 0
+    assert (await client.get("/session/status")).json()[sid] == {"type": "idle"}
+
+    assert (await client.delete(f"/session/{sid}")).json() == {"ok": True}
+    r = await client.get(f"/session/{sid}")
+    assert r.status_code == 404
+    assert r.json() == {"code": "NOT_FOUND", "message": "Session not found"}
+    r = await client.post("/session", json={"title": "x"})
+    assert r.status_code == 400
+    assert r.json() == {"code": "VALIDATION_ERROR", "message": "directory is required"}
+
+
+async def test_engine_error_surfaces_as_502_and_session_error(client, workdir, settings):
+    settings.model_name = None
+    sid = await create_session(client, workdir)
+    async with SseCollector(client) as sse:
+        r = await client.post(
+            f"/session/{sid}/prompt_async",
+            json={
+                "parts": [{"type": "text", "text": "hi"}],
+                "model": {"providerID": "x", "modelID": "no-such-model-xyz"},
+            },
+        )
+        assert r.status_code == 502
+        assert r.json()["code"] == "BAD_GATEWAY"
+        assert r.json()["message"]
+        err = await sse.wait_for("session.error", sid)
+        await sse.wait_for("session.idle", sid)
+    assert err["properties"]["error"]["message"]
+    msgs = (await client.get(f"/session/{sid}/message")).json()
+    last = msgs[-1]
+    assert last["role"] == "assistant"
+    assert last["info"]["finish"] == "stop"
+    assert last["info"]["error"]
+    assert (await client.get("/session/status")).json()[sid] == {"type": "idle"}
+
+
+async def test_question_round_trip_with_real_engine(client, workdir, settings):
+    settings.question_timeout = 60
+    sid = await create_session(client, workdir)
+    async with SseCollector(client) as sse:
+        task = asyncio.create_task(
+            ask(
+                client,
+                sid,
+                "先调用 ask_user 工具问我：'你想要哪个颜色？'，选项为 red 和 blue。"
+                "拿到我的回答后，只回复我选择的那个单词。",
+            )
+        )
+        asked = await sse.wait_for("question.asked", sid, timeout=90)
+        pending = (await client.get("/question")).json()
+        assert pending[0]["id"] == asked["properties"]["id"]
+        assert pending[0]["sessionID"] == sid
+        assert pending[0]["questions"][0]["question"]
+        r = await client.post(f"/question/{pending[0]['id']}/reply", json={"answers": [["blue"]]})
+        assert r.json() == {"ok": True}
+        msgs = await asyncio.wait_for(task, 120)
+        await sse.wait_for("session.idle", sid)
+    assert "blue" in assert_final(msgs)["content"].lower()
+    assert (await client.get("/question")).json() == []
+    tool_msg = next(m for m in msgs if m["role"] == "tool" and m["tool_name"] == "ask_user")
+    assert "blue" in tool_msg["content"]
+
+
+async def test_sse_event_types_and_status_transitions(client, workdir):
+    sid = await create_session(client, workdir)
+    async with SseCollector(client) as sse:
+        msgs = await ask(
+            client, sid, "在当前工作目录创建文件 sse.txt，内容为 ok。完成后回复 DONE。"
+        )
+        await sse.wait_for("session.idle", sid)
+        heartbeat = await sse.wait_for("server.heartbeat", timeout=20)
+    assert heartbeat["properties"] == {}
+    assert sse.events[0]["type"] == "server.connected"
+    types = sse.types(sid)
+    statuses = [
+        e["properties"]["status"]["type"]
+        for e in sse.events
+        if e["type"] == "session.status" and e["properties"]["sessionID"] == sid
+    ]
+    assert statuses[0] == "busy"
+    assert statuses[-1] == "idle"
+    assert types[-2:] == ["session.status", "session.idle"]
+    part_types = {
+        e["properties"]["part"]["type"]
+        for e in sse.events
+        if e["type"] == "message.part.updated" and e["properties"]["sessionID"] == sid
+    }
+    assert part_types >= {"text", "tool", "step-finish"}
+    tool_states = [
+        e["properties"]["part"]["state"]["status"]
+        for e in sse.events
+        if e["type"] == "message.part.updated"
+        and e["properties"]["sessionID"] == sid
+        and e["properties"]["part"]["type"] == "tool"
+    ]
+    assert "running" in tool_states and "completed" in tool_states
+    assert all(
+        "messageID" in e["properties"] for e in sse.events if e["type"] == "message.part.updated"
+    )
+    assert_final(msgs)
+    assert (workdir / "sse.txt").read_text(encoding="utf-8").strip() == "ok"
