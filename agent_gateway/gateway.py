@@ -24,12 +24,28 @@ class Gateway:
         self.bus = EventBus()
         self.hub = InteractionHub(self.bus, settings)
         self.engine_info: EngineInfo | None = None
+        self.engine_error: str | None = None
+        self.shutting_down = False
+        self._locks: dict[str, asyncio.Lock] = {}
         self._turns: dict[str, tuple[TurnRunner, asyncio.Task[TurnOutcome]]] = {}
 
+    @property
+    def unavailable_reason(self) -> str | None:
+        if self.shutting_down:
+            return "gateway is shutting down"
+        if self.engine_error is not None:
+            return f"engine failed to start: {self.engine_error}"
+        return None
+
     async def startup(self) -> None:
-        self.engine_info = await self.engine.start()
-        for session in self.store.all():
-            await self.engine.open_session(_context(session), _history(session))
+        try:
+            self.engine_info = await self.engine.start()
+            for session in self.store.all():
+                await self.engine.open_session(_context(session), _history(session))
+        except Exception as exc:  # noqa: BLE001 - 引擎不可用时网关以 503 应答
+            self.engine_error = str(exc) or exc.__class__.__name__
+            log.exception("engine %s failed to start", self.settings.engine)
+            return
         log.info(
             "engine=%s model=%s tools=%d skills=%d",
             self.engine_info.name,
@@ -39,9 +55,11 @@ class Gateway:
         )
 
     async def shutdown(self) -> None:
+        self.shutting_down = True
         for session_id in list(self._turns):
             await self.abort_turn(session_id)
-        await self.engine.stop()
+        if self.engine_error is None:
+            await self.engine.stop()
         self.store.close()
 
     async def create_session(self, directory: str, title: str | None) -> dict:
@@ -52,10 +70,16 @@ class Gateway:
     async def delete_session(self, session_id: str) -> None:
         await self.abort_turn(session_id)
         self.hub.drop_session(session_id)
+        self._locks.pop(session_id, None)
         await self.engine.close_session(session_id)
         self.store.delete(session_id)
 
     async def run_turn(self, session: Session, prompt: str, model: ModelRef) -> TurnOutcome:
+        lock = self._locks.setdefault(session.id, asyncio.Lock())
+        async with lock:
+            return await self._run_turn(session, prompt, model)
+
+    async def _run_turn(self, session: Session, prompt: str, model: ModelRef) -> TurnOutcome:
         runner = TurnRunner(
             session=session,
             store=self.store,

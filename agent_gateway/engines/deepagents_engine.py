@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 from collections.abc import AsyncIterator, Sequence
@@ -22,7 +23,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from ..config import Settings
 from ..tools.ask_user import make_ask_user_langchain_tool
 from ..tools.http import make_async_client, make_sync_client
-from ..tools.mcp_config import parse_mcp_servers, to_langchain_connection
+from ..tools.mcp_config import normalize_tool_schema, parse_mcp_servers, to_langchain_connection
 from ..tools.permissions import DENIED_MESSAGE, PermissionGuard
 from ..tools.skills import Skill, discover_skills
 from .base import (
@@ -31,6 +32,7 @@ from .base import (
     HistoryMessage,
     InteractionPort,
     ModelRef,
+    NullInteraction,
     SessionContext,
     StepFinish,
     TextDelta,
@@ -78,6 +80,14 @@ def _chunk_text(chunk: Any) -> str:
     return text() if callable(text) else ""
 
 
+def _normalized(tool: BaseTool) -> BaseTool:
+    if not isinstance(tool.args_schema, dict):
+        return tool
+    clone = copy.copy(tool)
+    clone.args_schema = normalize_tool_schema(copy.deepcopy(tool.args_schema))
+    return clone
+
+
 def _tool_output_text(output: Any) -> str:
     """ToolMessage / Command(update={"messages": [...]}) / 任意值 → 文本。"""
     update = getattr(output, "update", None)
@@ -122,7 +132,7 @@ class DeepAgentsEngine:
             client = MultiServerMCPClient({s.name: to_langchain_connection(s) for s in specs})
             for spec in specs:
                 session = await self._stack.enter_async_context(client.session(spec.name))
-                tools = await load_mcp_tools(session)
+                tools = [_normalized(t) for t in await load_mcp_tools(session)]
                 log.info("mcp server %s: %d tools", spec.name, len(tools))
                 self._mcp_tools.extend(tools)
         self._skills = discover_skills(cfg.skill_dirs)
@@ -155,12 +165,10 @@ class DeepAgentsEngine:
             streaming=True,
             http_client=make_sync_client(),
             http_async_client=make_async_client(),
+            extra_body=self.settings.model_extra_body or None,
         )
         backend = LocalShellBackend(root_dir=directory, virtual_mode=False, inherit_env=True)
-        tools: list[Any] = [
-            *self._mcp_tools,
-            make_ask_user_langchain_tool(state.context.id, interaction),
-        ]
+        tools = self._session_tools(state.context, interaction)
         permission = PermissionMiddleware(
             PermissionGuard(state.context.id, interaction, self.settings)
         )
@@ -188,6 +196,15 @@ class DeepAgentsEngine:
             )
             state.history = []
         return agent, permission
+
+    def _session_tools(self, session: SessionContext, interaction: InteractionPort) -> list[Any]:
+        tools: list[Any] = list(self._mcp_tools)
+        if self.settings.ask_user:
+            tools.append(make_ask_user_langchain_tool(session.id, interaction))
+        return tools
+
+    def tool_names_for(self, session: SessionContext) -> list[str]:
+        return [t.name for t in self._session_tools(session, NullInteraction())]
 
     def _agent_for(self, state: _SessionState, model_name: str, interaction: InteractionPort):
         if model_name not in state.agents:

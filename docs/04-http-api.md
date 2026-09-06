@@ -6,14 +6,14 @@
 
 | 方法 | 路径 | 响应 | 备注 |
 | --- | --- | --- | --- |
-| GET | `/health` | `{engine, model, tools, skills, sessions}` | 规范外，部署自检 |
+| GET | `/health` | `{engine, model, tools, skills, sessions}` | 规范外，部署自检；引擎不可用时 503 |
 | GET | `/`、`/ui` | 调试页面 HTML | 规范外 |
 | GET | `/session` | `SessionSummary[]` | 规范外，调试页面用 |
 | POST | `/session` | 200 Session 摘要 | `directory` 必填；`title` 可缺省 |
 | GET | `/session/status` | `{id: {type}}` | 注册顺序先于 `/session/{id}` |
 | GET | `/session/{id}` | Session 摘要 + `message_count` | |
 | DELETE | `/session/{id}` | `{ok: true}` | busy 时先中止 |
-| POST | `/session/{id}/prompt_async` | 204 | 阻塞到本轮结束；busy 时 409 |
+| POST | `/session/{id}/prompt_async` | 204 | 阻塞到本轮结束；会话 busy 时排队，待上一轮结束后按到达顺序执行 |
 | GET | `/session/{id}/message` | `Message[]` | |
 | POST | `/session/{id}/abort` | `{ok: true}` | idle 时也返回 ok |
 | POST | `/session/{id}/stop` | 同上 | 别名 |
@@ -43,9 +43,9 @@
 | --- | --- | --- |
 | 400 | `VALIDATION_ERROR` | 请求体校验失败、`directory` 缺失、`parts` 为空、`MODEL_NAME` 与 `model.modelID` 同时缺失 |
 | 404 | `NOT_FOUND` | 会话、问题、权限请求不存在 |
-| 409 | `SESSION_BUSY` | busy 会话再次 `prompt_async` |
 | 502 | `BAD_GATEWAY` | 引擎执行异常 |
 | 500 | `INTERNAL_ERROR` | 其他未捕获异常 |
+| 503 | `SERVICE_UNAVAILABLE` | 引擎启动失败或网关正在关闭；影响 `/health`、`POST /session`、`prompt_async` |
 
 ## SSE 响应头
 

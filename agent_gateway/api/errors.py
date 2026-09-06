@@ -35,9 +35,9 @@ class NotFound(GatewayError):
     code = "NOT_FOUND"
 
 
-class SessionBusy(GatewayError):
-    status_code = 409
-    code = "SESSION_BUSY"
+class ServiceUnavailable(GatewayError):
+    status_code = 503
+    code = "SERVICE_UNAVAILABLE"
 
 
 class BadGateway(GatewayError):

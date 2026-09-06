@@ -22,6 +22,8 @@ uv run python -m agent_gateway --engine <deepagents|openai-agents> [--port 6217]
 | | `GATEWAY_DB` | `./gateway.db` | SQLite 文件；`:memory:` 表示不落盘 |
 | | `GATEWAY_TURN_TIMEOUT` | `900` | 秒，单轮上限 |
 | | `GATEWAY_QUESTION_TIMEOUT` | `120` | 秒，反问无人回复则取默认答案 |
+| | `GATEWAY_ASK_USER` | `false` | `true` 时向引擎注册 `ask_user` 反问工具；关闭时模型无法反问，`/question` 接口仍可用 |
+| | `MODEL_EXTRA_BODY` | 无 | JSON，覆盖 `gateway.json` 的 `model.extra_body` |
 | | `GATEWAY_PERMISSION_MODE` | `auto` | `auto` 直接放行，不发事件；`ask` 挂起等待回复，超时按 `once` 放行 |
 | | `GATEWAY_MAX_STEPS` | `50` | 单轮 LLM 调用上限 |
 | | `GATEWAY_LOG_LEVEL` | `INFO` | |
@@ -32,6 +34,9 @@ uv run python -m agent_gateway --engine <deepagents|openai-agents> [--port 6217]
 
 ```json
 {
+  "model": {
+    "extra_body": {"chat_template_kwargs": {"enable_thinking": false}}
+  },
   "system_prompt": "你是办公助手……",
   "system_prompt_file": "./prompts/system.md",
   "mcpServers": {
@@ -47,6 +52,7 @@ uv run python -m agent_gateway --engine <deepagents|openai-agents> [--port 6217]
 
 | 键 | 说明 |
 | --- | --- |
+| `model.extra_body` | 附加到每次 chat completions 请求体的字段。缺省 `{"chat_template_kwargs": {"enable_thinking": false}}`，用于关闭自部署模型的 chat template thinking；显式设为 `{}` 可清空 |
 | `system_prompt` / `system_prompt_file` | 二选一，`file` 优先；都缺省时使用内置提示词 |
 | `mcpServers` | 与 Claude Desktop / Cursor 的 `mcpServers` 格式一致。有 `command` 为 stdio；有 `url` 按 `type` 取 `streamable-http`（默认）或 `sse` |
 | `skills` | skill 根目录列表，相对路径基于配置文件所在目录；每个子目录含 `SKILL.md` |

@@ -85,6 +85,18 @@ class InteractionPort(Protocol):
     ) -> PermissionReply: ...
 
 
+class NullInteraction:
+    """不询问：反问取默认项，权限一律放行。"""
+
+    async def ask_question(self, session_id: str, questions: list[Question]) -> list[list[str]]:
+        return [[q.options[0].label] if q.options else [] for q in questions]
+
+    async def ask_permission(
+        self, session_id: str, permission: str, patterns: list[str]
+    ) -> PermissionReply:
+        return "always"
+
+
 class AgentEngine(Protocol):
     name: str
 

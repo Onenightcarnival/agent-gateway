@@ -93,3 +93,13 @@ def to_openai_agents_server(spec: McpServerSpec):
     if spec.transport == "sse":
         return MCPServerSse(params=params, **common)
     return MCPServerStreamableHttp(params=params, **common)
+
+
+def normalize_tool_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """补齐 OpenAI 兼容代理稳定识别所需的字段：properties、required、additionalProperties。"""
+    out = dict(schema)
+    out.setdefault("type", "object")
+    out["properties"] = dict(out.get("properties") or {})
+    out.setdefault("required", [])
+    out.setdefault("additionalProperties", False)
+    return out

@@ -16,14 +16,16 @@
 - 会话 CRUD、`/session/status` 路由优先级、404/400 格式
 - 一轮正常对话：消息序列、parts、finish、SSE 事件顺序
 - 多步工具调用：assistant(tool-calls) → tool → assistant(stop)
-- busy 期间再次 prompt → 409
+- busy 期间再次 prompt → 排队，两轮按序完成
+- 引擎启动失败 → `/health`、建会话、prompt 返回 503，`GET /session/status` 仍可用
+- `ask_user` 开关：默认关闭时引擎不注册反问工具
 - abort：任务被取消，最后消息 `aborted=true`，状态回 idle
 - 超时：同 abort，`aborted_reason=timeout`
 - 引擎异常：502，`session.error`，最后消息 finish=stop
 - 客户端断连：轮次继续完成
 - 反问：`question.asked` → `GET /question` → reply → 引擎收到答案；超时取默认
 - 权限：`ask` 模式挂起，reply `reject` 时工具收到拒绝；`auto` 模式不发事件
-- 配置：环境变量解析与优先级、`gateway.json` 路径解析
+- 配置：环境变量解析与优先级、`gateway.json` 路径解析、`model.extra_body` 默认值与覆盖
 - 存储：SQLite 往返、级联删除、重启后会话与消息可读、引擎收到历史回灌
 - 出站 HTTP：工厂产出的客户端 `trust_env=False`、`verify=False`
 - `ask_user` 的 OpenAI 工具 schema 不含 `anyOf` / `null`

@@ -10,6 +10,8 @@ from typing import Any, Literal
 
 PermissionMode = Literal["auto", "ask"]
 
+DEFAULT_EXTRA_BODY: dict[str, Any] = {"chat_template_kwargs": {"enable_thinking": False}}
+
 DEFAULT_SYSTEM_PROMPT = """你是一个运行在用户电脑上的办公自动化助手。
 
 工作方式：
@@ -27,6 +29,7 @@ class GatewayFile:
 
     base_dir: Path
     system_prompt: str | None = None
+    model_extra_body: dict[str, Any] = field(default_factory=lambda: dict(DEFAULT_EXTRA_BODY))
     mcp_servers: dict[str, dict[str, Any]] = field(default_factory=dict)
     skill_dirs: list[Path] = field(default_factory=list)
     permission_ask_tools: set[str] = field(default_factory=set)
@@ -41,9 +44,11 @@ class GatewayFile:
         prompt_file = raw.get("system_prompt_file")
         if prompt_file:
             prompt = (base / prompt_file).read_text(encoding="utf-8")
+        model = raw.get("model", {})
         return cls(
             base_dir=base,
             system_prompt=prompt,
+            model_extra_body=dict(model.get("extra_body", DEFAULT_EXTRA_BODY)),
             mcp_servers=dict(raw.get("mcpServers", {})),
             skill_dirs=[(base / d).resolve() for d in raw.get("skills", [])],
             permission_ask_tools=set(raw.get("permissions", {}).get("ask", [])),
@@ -67,8 +72,10 @@ class Settings:
     turn_timeout: float = 900.0
     question_timeout: float = 120.0
     permission_mode: PermissionMode = "auto"
+    ask_user: bool = False
     max_steps: int = 50
     log_level: str = "INFO"
+    model_extra_body_override: dict[str, Any] | None = None
     _gateway_file: GatewayFile | None = field(default=None, repr=False)
 
     @property
@@ -76,6 +83,12 @@ class Settings:
         if self._gateway_file is None:
             self._gateway_file = GatewayFile.load(self.config_path)
         return self._gateway_file
+
+    @property
+    def model_extra_body(self) -> dict[str, Any]:
+        if self.model_extra_body_override is not None:
+            return self.model_extra_body_override
+        return self.gateway_file.model_extra_body
 
     def system_prompt(self, directory: str) -> str:
         template = self.gateway_file.system_prompt or DEFAULT_SYSTEM_PROMPT
@@ -110,6 +123,10 @@ class Settings:
             turn_timeout=float(e.get("GATEWAY_TURN_TIMEOUT", "900")),
             question_timeout=float(e.get("GATEWAY_QUESTION_TIMEOUT", "120")),
             permission_mode="ask" if e.get("GATEWAY_PERMISSION_MODE") == "ask" else "auto",
+            ask_user=e.get("GATEWAY_ASK_USER", "").strip().lower() in ("1", "true", "yes", "on"),
+            model_extra_body_override=(
+                json.loads(e["MODEL_EXTRA_BODY"]) if e.get("MODEL_EXTRA_BODY") else None
+            ),
             max_steps=int(e.get("GATEWAY_MAX_STEPS", "50")),
             log_level=e.get("GATEWAY_LOG_LEVEL", "INFO"),
         )

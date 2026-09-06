@@ -34,6 +34,7 @@ def settings(tmp_path: Path) -> Settings:
         permission_mode="ask",
         config_path=tmp_path / "gateway.json",
         db_path=None,
+        ask_user=True,
     )
 
 

@@ -71,6 +71,7 @@ def settings(engine_name: str, gateway_config: Path) -> Settings:
     s.config_path = gateway_config
     s.turn_timeout = 180
     s.db_path = None
+    s.ask_user = True
     s.question_timeout = 1
     return s
 

@@ -8,6 +8,7 @@ import pytest
 from agent_gateway.tools.http import mcp_client_factory
 from agent_gateway.tools.local import LocalTools
 from agent_gateway.tools.mcp_config import (
+    normalize_tool_schema,
     parse_mcp_servers,
     to_langchain_connection,
     to_openai_agents_server,
@@ -155,3 +156,21 @@ def test_ask_user_langchain_schema_has_no_anyof_or_null():
         "items": {"type": "string"},
         "type": "array",
     }
+
+
+def test_normalize_tool_schema_fills_defaults_without_forcing_optional_args():
+    assert normalize_tool_schema({"properties": {}, "type": "object"}) == {
+        "properties": {},
+        "type": "object",
+        "required": [],
+        "additionalProperties": False,
+    }
+    src = {
+        "type": "object",
+        "properties": {"a": {"type": "string"}, "b": {"type": "integer"}},
+        "required": ["a"],
+    }
+    out = normalize_tool_schema(src)
+    assert out["required"] == ["a"]
+    assert out["additionalProperties"] is False
+    assert src.get("additionalProperties") is None

@@ -38,6 +38,7 @@ from .base import (
     HistoryMessage,
     InteractionPort,
     ModelRef,
+    NullInteraction,
     SessionContext,
     StepFinish,
     TextDelta,
@@ -105,6 +106,7 @@ class OpenAIAgentsEngine:
         self._servers: list[Any] = []
         self._skills: list[Skill] = []
         self._client: AsyncOpenAI | None = None
+        self._mcp_tool_names: list[str] = []
         self._sessions: dict[str, MemorySession] = {}
 
     # ---- 生命周期 ----
@@ -126,6 +128,7 @@ class OpenAIAgentsEngine:
             tool_names.extend(names)
             self._servers.append(server)
         self._skills = discover_skills(cfg.skill_dirs)
+        self._mcp_tool_names = tool_names
         return EngineInfo(
             name=self.name,
             model=self.settings.model_name or "(from request)",
@@ -151,14 +154,7 @@ class OpenAIAgentsEngine:
     def _build_agent(
         self, session: SessionContext, model_name: str, interaction: InteractionPort
     ) -> GuardedAgent:
-        local = LocalTools(session.directory)
-        tools = [
-            function_tool(local.read_file),
-            function_tool(local.write_file),
-            function_tool(local.list_directory),
-            function_tool(local.run_command),
-            function_tool(make_ask_user(session.id, interaction), name_override="ask_user"),
-        ]
+        tools = self._session_tools(session, interaction)
         instructions = (
             self.settings.system_prompt(session.directory) + "\n" + skills_prompt(self._skills)
         )
@@ -168,10 +164,30 @@ class OpenAIAgentsEngine:
             tools=tools,
             mcp_servers=self._servers,
             model=OpenAIChatCompletionsModel(model=model_name, openai_client=self._client),
-            model_settings=ModelSettings(parallel_tool_calls=False),
+            model_settings=ModelSettings(
+                parallel_tool_calls=False, extra_body=self.settings.model_extra_body or None
+            ),
         )
         agent.guard = PermissionGuard(session.id, interaction, self.settings)
         return agent
+
+    def _session_tools(self, session: SessionContext, interaction: InteractionPort) -> list[Any]:
+        local = LocalTools(session.directory)
+        tools: list[Any] = [
+            function_tool(local.read_file),
+            function_tool(local.write_file),
+            function_tool(local.list_directory),
+            function_tool(local.run_command),
+        ]
+        if self.settings.ask_user:
+            tools.append(
+                function_tool(make_ask_user(session.id, interaction), name_override="ask_user")
+            )
+        return tools
+
+    def tool_names_for(self, session: SessionContext) -> list[str]:
+        names = [t.name for t in self._session_tools(session, NullInteraction())]
+        return names + [n for n in self._mcp_tool_names]
 
     async def run(
         self,

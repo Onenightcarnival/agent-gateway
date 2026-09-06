@@ -1,6 +1,8 @@
 import asyncio
 import sys
 
+from agent_gateway.config import Settings
+
 from .conftest import ask, assert_final, create_session
 
 
@@ -111,3 +113,22 @@ async def test_permission_ask_mode_rejects_tool(client, workdir, engine_name, se
     assert_final(msgs)
     tool_msg = next(m for m in msgs if m["role"] == "tool")
     assert "denied" in tool_msg["content"].lower()
+
+
+async def test_ask_user_disabled_by_default(engine_name, gateway_config, workdir):
+    from agent_gateway.engines.base import SessionContext
+    from agent_gateway.engines.registry import create_engine
+
+    s = Settings.from_env(engine=engine_name)
+    s.config_path = gateway_config
+    s.db_path = None
+    engine = create_engine(s)
+    await engine.start()
+    try:
+        ctx = SessionContext(id="s", directory=str(workdir), title="t")
+        await engine.open_session(ctx)
+        assert "ask_user" not in engine.tool_names_for(ctx)
+        s.ask_user = True
+        assert "ask_user" in engine.tool_names_for(ctx)
+    finally:
+        await engine.stop()

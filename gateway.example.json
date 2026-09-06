@@ -1,4 +1,7 @@
 {
+  "model": {
+    "extra_body": {"chat_template_kwargs": {"enable_thinking": false}}
+  },
   "system_prompt_file": "prompts/system.md",
   "mcpServers": {
     "office": {

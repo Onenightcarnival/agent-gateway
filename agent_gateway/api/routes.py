@@ -15,7 +15,7 @@ from ..core.models import dump
 from ..core.store import SessionNotFound
 from ..engines.base import ModelRef
 from ..gateway import Gateway
-from .errors import BadGateway, NotFound, SessionBusy, ValidationError
+from .errors import BadGateway, NotFound, ServiceUnavailable, ValidationError
 from .schemas import CreateSessionBody, PermissionReplyBody, PromptBody, QuestionReplyBody
 
 router = APIRouter()
@@ -25,6 +25,12 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 def _gw(request: Request) -> Gateway:
     return request.app.state.gateway
+
+
+def _require_engine(gw: Gateway) -> None:
+    reason = gw.unavailable_reason
+    if reason is not None:
+        raise ServiceUnavailable(reason)
 
 
 def _session(gw: Gateway, session_id: str):
@@ -49,6 +55,7 @@ async def debug_ui() -> FileResponse:
 @router.get("/health")
 async def health(request: Request) -> dict:
     gw = _gw(request)
+    _require_engine(gw)
     info = gw.engine_info
     return {
         "engine": info.name if info else gw.settings.engine,
@@ -67,7 +74,9 @@ async def health(request: Request) -> dict:
 async def create_session(body: CreateSessionBody, request: Request) -> dict:
     if not body.directory:
         raise ValidationError("directory is required")
-    return await _gw(request).create_session(body.directory, body.title)
+    gw = _gw(request)
+    _require_engine(gw)
+    return await gw.create_session(body.directory, body.title)
 
 
 @router.get("/session")
@@ -101,8 +110,7 @@ async def prompt_async(session_id: str, body: PromptBody, request: Request) -> R
     text = body.text()
     if not text:
         raise ValidationError("parts must contain at least one text part")
-    if session.status == "busy":
-        raise SessionBusy("Session is busy")
+    _require_engine(gw)
     model = ModelRef(
         provider_id=body.model.providerID if body.model else None,
         model_id=body.model.modelID if body.model else None,

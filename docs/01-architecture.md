@@ -50,6 +50,8 @@
 
 启动一次，全局单例：`Settings`、`EventBus`、`SessionStore`、`InteractionHub`、`AgentEngine`。
 
+引擎 `start` 失败不终止进程：网关记录错误，`/health`、`POST /session`、`prompt_async` 返回 503，其余只读接口照常。
+
 每个会话：`Session`（状态、消息列表、目录）+ 引擎内部的会话句柄（deepagents 的 thread、openai-agents 的 memory session）。
 
 每轮 `prompt_async`：一个 `TurnRunner` 实例，持有 asyncio Task；中止 = 取消该 Task。
@@ -70,6 +72,7 @@ POST /session/{id}/prompt_async
   → bus.publish(session.status idle, session.idle)
   → 204
 异常   → 同样收尾（错误文本写入 assistant 消息）+ session.error + 502
+排队   → 会话 busy 时新请求等待上一轮结束，按到达顺序逐个执行
 中止   → 同样收尾（finish=stop，info.aborted=true）+ 204
 超时   → 视为中止，info.aborted_reason=timeout
 客户端断连 → 轮次继续执行，结果留在消息列表

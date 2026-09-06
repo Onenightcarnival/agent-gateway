@@ -20,6 +20,8 @@ def test_from_env_defaults():
     assert s.permission_mode == "auto"
     assert s.max_steps == 50
     assert s.config_path == Path("gateway.json")
+    assert s.ask_user is False
+    assert s.model_extra_body == {"chat_template_kwargs": {"enable_thinking": False}}
 
 
 def test_cli_overrides_env():
@@ -43,8 +45,12 @@ def test_env_values_are_parsed():
         "GATEWAY_PERMISSION_MODE": "ask",
         "GATEWAY_MAX_STEPS": "7",
         "GATEWAY_CONFIG": "/etc/gw.json",
+        "GATEWAY_ASK_USER": "true",
+        "MODEL_EXTRA_BODY": '{"top_k": 5}',
     }
     s = Settings.from_env(env)
+    assert s.ask_user is True
+    assert s.model_extra_body == {"top_k": 5}
     assert s.model_name == "m"
     assert s.turn_timeout == 12.5
     assert s.question_timeout == 3
@@ -97,3 +103,23 @@ def test_default_system_prompt_mentions_directory(tmp_path: Path):
     s = Settings(engine="e", model_base_url="u", model_api_key="k", config_path=tmp_path / "x.json")
     assert "D:/work" in s.system_prompt("D:/work")
     assert "{directory}" in DEFAULT_SYSTEM_PROMPT
+
+
+def test_extra_body_from_gateway_file_and_env_override(tmp_path: Path):
+    (tmp_path / "gateway.json").write_text(
+        json.dumps({"model": {"extra_body": {"chat_template_kwargs": {"enable_thinking": True}}}}),
+        encoding="utf-8",
+    )
+    s = Settings(
+        engine="e", model_base_url="u", model_api_key="k", config_path=tmp_path / "gateway.json"
+    )
+    assert s.model_extra_body == {"chat_template_kwargs": {"enable_thinking": True}}
+    s.model_extra_body_override = {}
+    assert s.model_extra_body == {}
+    (tmp_path / "gateway.json").write_text(
+        json.dumps({"model": {"extra_body": {}}}), encoding="utf-8"
+    )
+    s2 = Settings(
+        engine="e", model_base_url="u", model_api_key="k", config_path=tmp_path / "gateway.json"
+    )
+    assert s2.model_extra_body == {}

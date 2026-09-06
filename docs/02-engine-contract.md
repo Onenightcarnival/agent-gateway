@@ -12,6 +12,7 @@ class AgentEngine(Protocol):
     async def close_session(self, session_id: str) -> None: ...
     def run(self, session: SessionContext, prompt: str, model: ModelRef,
             interaction: InteractionPort) -> AsyncIterator[EngineEvent]: ...
+    def tool_names_for(self, session: SessionContext) -> list[str]: ...
 ```
 
 | 方法 | 时机 | 约束 |
@@ -21,12 +22,15 @@ class AgentEngine(Protocol):
 | `open_session` | `POST /session`；启动时对已持久化的会话逐个调用 | 绑定工作目录，准备引擎内会话；`history` 非空时回灌为引擎记忆 |
 | `close_session` | `DELETE /session/{id}` | 释放引擎内会话 |
 | `run` | 每轮 | 异步迭代器；被取消时必须清理并退出，不得吞掉 `CancelledError` |
+| `tool_names_for` | 诊断 | 网关为该会话注册给引擎的工具名（MCP、本地工具、`ask_user`），不含引擎自带工具 |
 
 `EngineInfo`：`name`、`model`、`tool_names`、`skill_names`。
 
 `SessionContext`：`id`、`directory`、`title`。
 
 `HistoryMessage`：`role`（`user` / `assistant`）、`content`。只含文本，不含工具轨迹。
+
+`NullInteraction`：不询问的 `InteractionPort` 实现，反问取首选项、权限一律放行；用于诊断构建。
 
 `ModelRef`：`provider_id`、`model_id`。适配器解析顺序：`Settings.model_name` → `ModelRef.model_id`。
 
@@ -58,12 +62,12 @@ class InteractionPort(Protocol):
 
 | 网关概念 | 实现 |
 | --- | --- |
-| 模型 | `ChatOpenAI(base_url, api_key, model, http_client, http_async_client)` |
+| 模型 | `ChatOpenAI(base_url, api_key, model, http_client, http_async_client, extra_body)` |
 | 会话目录 | 每会话 `LocalShellBackend(root_dir=directory, virtual_mode=False, inherit_env=True)` |
 | 会话记忆 | `InMemorySaver` checkpointer，`thread_id = session.id`；`history` 通过 `agent.update_state` 写入 |
-| MCP | `MultiServerMCPClient.get_tools()`，启动时装载一次 |
+| MCP | `MultiServerMCPClient` 持久 session + `load_mcp_tools`，启动时装载一次；工具 schema 经 `normalize_tool_schema` 补齐 `required` / `additionalProperties: false`（部分代理对缺省字段的 schema 识别不稳定） |
 | skill | `create_deep_agent(skills=[dirs])` |
-| 反问 | `make_ask_user_langchain_tool`：显式 `AskUserArgs` schema（无 anyOf / null）→ `InteractionPort.ask_question` |
+| 反问 | `Settings.ask_user` 为真时注册 `make_ask_user_langchain_tool`：显式 `AskUserArgs` schema（无 anyOf / null）→ `InteractionPort.ask_question` |
 | 权限 | `PermissionMiddleware.awrap_tool_call` → `PermissionGuard`；拒绝时返回错误 ToolMessage，并把 `ToolCallEnd(is_error)` 直接注入事件流 |
 | 事件流 | `graph.astream_events(v2)`：`on_chat_model_stream`→TextDelta，`on_chat_model_end`→ToolCallStart*+StepFinish，`on_tool_end`→ToolCallEnd |
 | 层级过滤 | 只取首个 `on_chat_model_start` / `on_tool_start` 所在深度的事件；子代理（`task` 工具）内部的模型与工具事件不进入轨迹，只保留 `task` 的调用与结果 |
@@ -74,12 +78,12 @@ class InteractionPort(Protocol):
 
 | 网关概念 | 实现 |
 | --- | --- |
-| 模型 | `OpenAIChatCompletionsModel(model, AsyncOpenAI(base_url, api_key, http_client))`，`set_tracing_disabled(True)` |
+| 模型 | `OpenAIChatCompletionsModel(model, AsyncOpenAI(base_url, api_key, http_client))` + `ModelSettings(extra_body)`，`set_tracing_disabled(True)` |
 | 会话目录 | 本地工具 `read_file` / `write_file` / `list_directory` / `run_command` 以 `directory` 为根；写入 instructions |
 | 会话记忆 | 自实现内存 `Session`（`get_items/add_items/pop_item/clear_session`）；`history` 以 user/assistant 消息项预填 |
 | MCP | `MCPServerStdio` / `MCPServerStreamableHttp`，启动时 `connect()` 一次 |
 | skill | instructions 注入 skill 清单（名称、描述、绝对路径）+ 本地工具 `read_file` |
-| 反问 | 函数工具 `ask_user` |
+| 反问 | `Settings.ask_user` 为真时注册函数工具 `ask_user` |
 | 权限 | `GuardedAgent.get_all_tools` 复制每个 `FunctionTool` 并替换 `on_invoke_tool`（MCP 工具在此阶段已转成 FunctionTool，一并覆盖）；拒绝时返回 `Permission denied by user.` |
 | 事件流 | `Runner.run_streamed`：`response.output_text.delta`→TextDelta；`response.completed`→按 `response.output` 中的 `function_call` 产出 ToolCallStart* 再 StepFinish；`tool_output`→ToolCallEnd |
 | 中止 | `result.cancel()` + 取消迭代 Task；`run_command` 的子进程随取消被 kill |

@@ -103,16 +103,20 @@ async def test_sse_connected_and_heartbeat_headers(client):
                 break
 
 
-async def test_busy_session_rejects_second_prompt(client, workdir, engine: ScriptedEngine):
-    engine.script = [Sleep(0.5), *plain_reply("late")]
+async def test_busy_session_queues_second_prompt(client, workdir, engine: ScriptedEngine):
+    engine.script = [Sleep(0.4), *plain_reply("reply")]
     sid = await create_session(client, workdir)
     first = asyncio.create_task(prompt(client, sid, "one"))
     await asyncio.sleep(0.1)
     assert (await client.get("/session/status")).json()[sid] == {"type": "busy"}
-    second = await prompt(client, sid, "two")
-    assert second.status_code == 409
-    assert second.json()["code"] == "SESSION_BUSY"
+    second = asyncio.create_task(prompt(client, sid, "two"))
+    await asyncio.sleep(0.1)
+    assert engine.prompts == [(sid, "one")]
     assert (await first).status_code == 204
+    assert (await second).status_code == 204
+    assert engine.prompts == [(sid, "one"), (sid, "two")]
+    msgs = (await client.get(f"/session/{sid}/message")).json()
+    assert [m["content"] for m in msgs] == ["one", "reply", "two", "reply"]
     assert (await client.get("/session/status")).json()[sid] == {"type": "idle"}
 
 
