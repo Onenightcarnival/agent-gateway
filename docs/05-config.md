@@ -69,7 +69,7 @@ skills/
 
 ## 内置系统提示词要点
 
-自主执行、用工具核实结果、完成后用中文简短汇报、工作目录为会话 `directory`。反问规则随 `GATEWAY_ASK_USER` 切换：关闭时不向用户提问；开启时仅在缺少关键信息时用 `ask_user` 提问，用户明确要求时必须调用。自定义提示词可用占位符 `{directory}`、`{interaction_rule}`。
+自主执行、用工具核实结果、完成后用中文简短汇报、工作目录为会话 `directory`、写入只允许在工作目录内。反问规则随 `GATEWAY_ASK_USER` 切换：关闭时不向用户提问；开启时仅在缺少关键信息时用 `ask_user` 提问，用户明确要求时必须调用。自定义提示词可用占位符 `{directory}`、`{interaction_rule}`。
 
 ## 权限标识
 
@@ -81,3 +81,13 @@ skills/
 GET /health
 {"engine": "deepagents", "model": "…", "tools": ["get_magic_number"], "skills": ["outlook"], "sessions": 0, "permission_mode": "auto"}
 ```
+
+## 权限模型：workspace-write
+
+| 操作 | 工作目录内 | 工作目录外 |
+| --- | --- | --- |
+| 读取、列举、搜索 | 允许 | 允许（skill 目录、系统文件） |
+| 创建、写入、编辑、删除文件 | 允许 | 拒绝，工具返回错误文本 |
+| shell 命令 | cwd 为工作目录 | macOS：`sandbox-exec` 拒绝工作目录、`TMPDIR`、`/tmp`、`/dev` 之外的写入；Windows / Linux：无系统级沙箱，仅由系统提示词约束 |
+
+实现：`tools/workspace.py` 的 `Workspace` 统一做路径判定与命令包装；deepagents 用 `WorkspaceShellBackend` 覆写 `write` / `edit` / `delete` / `execute`，openai-agents 的 `LocalTools` 调用同一个 `Workspace`。`/health` 的 `shell_sandbox` 字段报告当前平台 shell 是否受系统级限制。

@@ -32,6 +32,7 @@
 - 调试页面：`GET /` 返回 HTML
 - 目录浏览：主目录缺省、只列子目录且过滤隐藏目录、`parent` 与 `roots`、不存在 404、新建子目录与重名 400
 - 工具：skill 扫描与覆盖规则、`mcpServers` 三种传输解析、本地工具的根目录约束、命令超时与取消时杀进程
+- workspace-write：路径判定（相对、绝对、`..`）、写出工作区的工具返回错误且不落盘、macOS 下 shell 写出工作区被沙箱拒绝
 
 ## 集成用例（每个引擎一份，同一测试参数化）
 
@@ -43,6 +44,7 @@
 - skill：读取测试 skill 并按其指令行动
 - MCP：连接测试用 stdio MCP 服务并调用其工具
 - 中止：长任务中途 abort 后状态回 idle
+- workspace-write：要求模型把文件写到工作区外，文件不存在，且工具返回拒绝或模型按提示词拒绝；macOS 上 shell 写出工作区同样失败
 - 权限：`ask` 模式下拒绝 `execute` / `run_command`，轨迹里出现拒绝结果
 - 入口：子进程启动网关，`--engine` 参数与 `AGENT_ENGINE` 环境变量各一遍（参数优先于环境变量），`/health` 报告所选引擎，一轮对话成功；未知引擎与缺失引擎退出码 2
 - 会话增删查：创建、获取、`/session/status`、删除后 404；缺 `directory` 400；错误体为 `{code, message}`

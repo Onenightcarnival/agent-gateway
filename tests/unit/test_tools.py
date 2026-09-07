@@ -174,3 +174,42 @@ def test_normalize_tool_schema_fills_defaults_without_forcing_optional_args():
     assert out["required"] == ["a"]
     assert out["additionalProperties"] is False
     assert src.get("additionalProperties") is None
+
+
+# ---- workspace-write ----
+
+
+async def test_write_outside_workspace_is_rejected(tmp_path: Path):
+    ws = tmp_path / "ws"
+    tools = LocalTools(str(ws))
+    outside = tmp_path / "outside.txt"
+    result = await tools.write_file(str(outside), "x")
+    assert result.startswith("Error:")
+    assert "outside workspace" in result
+    assert not outside.exists()
+    assert (await tools.write_file("../escape.txt", "x")).startswith("Error:")
+    assert not (tmp_path / "escape.txt").exists()
+    assert (await tools.write_file("inside.txt", "ok")).startswith("wrote ")
+    assert (ws / "inside.txt").read_text() == "ok"
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="shell sandbox is macOS only")
+async def test_shell_write_outside_workspace_is_blocked_on_macos(tmp_path: Path, monkeypatch):
+    import tempfile
+
+    (tmp_path / "tmp").mkdir()
+    monkeypatch.setenv("TMPDIR", str(tmp_path / "tmp"))
+    monkeypatch.setattr(tempfile, "tempdir", None)
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    tools = LocalTools(str(ws))
+    outside = tmp_path / "shell.txt"
+    out = await tools.run_command(f'echo hi > "{outside}"')
+    assert not outside.exists()
+    assert "[exit code 0]" not in out
+    out = await tools.run_command("echo hi > inside.txt")
+    assert "[exit code 0]" in out
+    assert (ws / "inside.txt").read_text().strip() == "hi"
+    out = await tools.run_command('echo hi > "$TMPDIR/scratch.txt"')
+    assert "[exit code 0]" in out
+    assert (tmp_path / "tmp" / "scratch.txt").exists()

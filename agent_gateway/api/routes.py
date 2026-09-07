@@ -16,6 +16,7 @@ from ..core.store import SessionNotFound
 from ..engines.base import ModelRef
 from ..gateway import Gateway
 from ..tools import fs_browse
+from ..tools.workspace import Workspace
 from .errors import BadGateway, NotFound, ServiceUnavailable, ValidationError
 from .schemas import (
     CreateSessionBody,
@@ -94,6 +95,7 @@ async def health(request: Request) -> dict:
         "skills": info.skill_names if info else [],
         "sessions": len(gw.store),
         "permission_mode": gw.settings.permission_mode,
+        "shell_sandbox": Workspace(".").shell_enforced,
     }
 
 

@@ -4,19 +4,20 @@ from __future__ import annotations
 
 import asyncio
 import os
-import sys
 from pathlib import Path
+
+from .workspace import Workspace, WorkspaceViolation
 
 MAX_OUTPUT_CHARS = 100_000
 
 
 class LocalTools:
     def __init__(self, root: str) -> None:
-        self.root = Path(root)
+        self.workspace = Workspace(root)
+        self.root = self.workspace.root
 
     def resolve(self, path: str | None) -> Path:
-        p = Path(path or ".").expanduser()
-        return p if p.is_absolute() else self.root / p
+        return self.workspace.resolve(path)
 
     async def read_file(self, path: str) -> str:
         """读取文本文件内容。path 可为相对会话目录的路径或绝对路径。"""
@@ -29,8 +30,11 @@ class LocalTools:
         return text
 
     async def write_file(self, path: str, content: str) -> str:
-        """写入文本文件（覆盖），自动创建父目录。返回写入的绝对路径。"""
-        target = self.resolve(path)
+        """写入文本文件（覆盖），自动创建父目录。只允许写在工作目录内。返回写入的绝对路径。"""
+        try:
+            target = self.workspace.check_write(path)
+        except WorkspaceViolation as exc:
+            return f"Error: {exc}"
         target.parent.mkdir(parents=True, exist_ok=True)
         await asyncio.to_thread(target.write_text, content, "utf-8")
         return f"wrote {target}"
@@ -42,8 +46,12 @@ class LocalTools:
         return "\n".join(e.name + ("/" if e.is_dir() else "") for e in entries) or "(empty)"
 
     async def run_command(self, command: str, timeout_seconds: int = 120) -> str:
-        """在会话目录下用系统 shell 执行命令，返回合并的 stdout/stderr 与退出码。"""
+        """在会话目录下用系统 shell 执行命令，返回合并的 stdout/stderr 与退出码。
+
+        写入只允许在工作目录内。
+        """
         env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
+        command, _ = self.workspace.sandbox_command(command)
         proc = await asyncio.create_subprocess_shell(
             command,
             cwd=str(self.root),
@@ -64,6 +72,3 @@ class LocalTools:
         if len(text) > MAX_OUTPUT_CHARS:
             text = text[:MAX_OUTPUT_CHARS] + "\n...[truncated]"
         return f"{text}\n[exit code {proc.returncode}]"
-
-
-SHELL_NAME = "cmd.exe" if sys.platform == "win32" else "/bin/sh"

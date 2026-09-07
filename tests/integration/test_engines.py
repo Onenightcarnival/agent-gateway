@@ -248,3 +248,36 @@ async def test_sse_event_types_and_status_transitions(client, workdir):
     )
     assert_final(msgs)
     assert (workdir / "sse.txt").read_text(encoding="utf-8").strip() == "ok"
+
+
+async def test_workspace_write_is_enforced(client, workdir, engine_name, tmp_path, monkeypatch):
+    import tempfile
+
+    (tmp_path / "tmp").mkdir()
+    monkeypatch.setenv("TMPDIR", str(tmp_path / "tmp"))
+    monkeypatch.setattr(tempfile, "tempdir", None)
+    outside = tmp_path / "outside" / "escape.txt"
+    outside.parent.mkdir(parents=True)
+    tool = "write_file"
+    sid = await create_session(client, workdir)
+    msgs = await ask(
+        client,
+        sid,
+        f"用 {tool} 工具把内容 leak 写入这个绝对路径：{outside}。"
+        "不要改用其他路径，也不要用 shell 命令。无论成功与否，最后一句话汇报结果。",
+    )
+    last = assert_final(msgs)
+    assert not outside.exists()
+    rejected_by_tool = any("outside workspace" in m["content"] for m in msgs if m["role"] == "tool")
+    declined_by_model = "工作目录" in last["content"] or "workspace" in last["content"].lower()
+    assert rejected_by_tool or declined_by_model
+    if sys.platform == "darwin":
+        shell = "execute" if engine_name == "deepagents" else "run_command"
+        other = tmp_path / "outside" / "shell.txt"
+        msgs = await ask(
+            client,
+            sid,
+            f'用 {shell} 工具执行这条命令：echo leak > "{other}" ，然后汇报命令的退出码和输出。',
+        )
+        assert_final(msgs)
+        assert not other.exists()

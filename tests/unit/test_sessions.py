@@ -74,3 +74,4 @@ async def test_health_reports_engine(client):
     assert body["model"] == "scripted-model"
     assert body["tools"] == ["t1"]
     assert body["sessions"] == 0
+    assert isinstance(body["shell_sandbox"], bool)

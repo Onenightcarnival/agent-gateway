@@ -12,6 +12,7 @@ from typing import Any
 
 from deepagents import create_deep_agent
 from deepagents.backends import LocalShellBackend
+from deepagents.backends.protocol import DeleteResult, EditResult, ExecuteResponse, WriteResult
 from langchain.agents.middleware.types import AgentMiddleware, ToolCallRequest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import BaseTool
@@ -26,6 +27,7 @@ from ..tools.http import make_async_client, make_sync_client
 from ..tools.mcp_config import normalize_tool_schema, parse_mcp_servers, to_langchain_connection
 from ..tools.permissions import DENIED_MESSAGE, PermissionGuard
 from ..tools.skills import Skill, discover_skills
+from ..tools.workspace import Workspace, WorkspaceViolation
 from .base import (
     EngineEvent,
     EngineInfo,
@@ -41,6 +43,41 @@ from .base import (
 )
 
 log = logging.getLogger(__name__)
+
+
+class WorkspaceShellBackend(LocalShellBackend):
+    """workspace-write：写、改、删限定在工作目录内；shell 经平台沙箱包装。"""
+
+    def __init__(self, directory: str) -> None:
+        self.workspace = Workspace(directory)
+        super().__init__(root_dir=str(self.workspace.root), virtual_mode=False, inherit_env=True)
+
+    def write(self, file_path: str, content: str) -> WriteResult:
+        try:
+            self.workspace.check_write(file_path)
+        except WorkspaceViolation as exc:
+            return WriteResult(error=str(exc), path=None)
+        return super().write(file_path, content)
+
+    def edit(
+        self, file_path: str, old_string: str, new_string: str, replace_all: bool = False
+    ) -> EditResult:
+        try:
+            self.workspace.check_write(file_path)
+        except WorkspaceViolation as exc:
+            return EditResult(error=str(exc), path=None, occurrences=None)
+        return super().edit(file_path, old_string, new_string, replace_all)
+
+    def delete(self, file_path: str) -> DeleteResult:
+        try:
+            self.workspace.check_write(file_path)
+        except WorkspaceViolation as exc:
+            return DeleteResult(error=str(exc), path=None)
+        return super().delete(file_path)
+
+    def execute(self, command: str, *, timeout: int | None = None) -> ExecuteResponse:
+        wrapped, _ = self.workspace.sandbox_command(command)
+        return super().execute(wrapped, timeout=timeout)
 
 
 class PermissionMiddleware(AgentMiddleware):
@@ -167,7 +204,7 @@ class DeepAgentsEngine:
             http_async_client=make_async_client(),
             extra_body=self.settings.model_extra_body or None,
         )
-        backend = LocalShellBackend(root_dir=directory, virtual_mode=False, inherit_env=True)
+        backend = WorkspaceShellBackend(directory)
         tools = self._session_tools(state.context, interaction)
         permission = PermissionMiddleware(
             PermissionGuard(state.context.id, interaction, self.settings)

@@ -6,7 +6,7 @@
 
 | 方法 | 路径 | 响应 | 备注 |
 | --- | --- | --- | --- |
-| GET | `/health` | `{engine, model, tools, skills, sessions}` | 规范外，部署自检；引擎不可用时 503 |
+| GET | `/health` | `{engine, model, tools, skills, sessions, permission_mode, shell_sandbox}` | 规范外，部署自检；引擎不可用时 503 |
 | GET | `/`、`/ui` | 调试页面 HTML | 规范外 |
 | GET | `/session` | `SessionSummary[]` | 规范外，调试页面用 |
 | GET | `/fs/dirs?path=` | `{path, parent, roots[], entries[{name, path}]}` | 规范外，调试页面目录浏览；`path` 缺省为用户主目录，只列子目录，隐藏目录不列 |
