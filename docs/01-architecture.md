@@ -41,7 +41,8 @@
 | `agent_gateway/tools/mcp_config.py` | `mcpServers` → 各引擎连接描述 | 无 |
 | `agent_gateway/tools/skills.py` | 扫描 skill 目录，解析 `SKILL.md`，生成 skill 清单提示 | 无 |
 | `agent_gateway/tools/local.py` | 文件读写、目录列举、命令执行（会话目录为根） | workspace |
-| `agent_gateway/tools/workspace.py` | workspace-write 判定：写路径校验、shell 命令沙箱包装 | 无 |
+| `agent_gateway/tools/workspace.py` | workspace-write 判定：写路径校验、`spawn` 出受沙箱约束的 shell 进程 | windows_sandbox |
+| `agent_gateway/tools/windows_sandbox.py` | Windows 受限令牌沙箱（pywin32） | 无 |
 | `agent_gateway/tools/permissions.py` | `PermissionGuard`：工具调用前的审批 | engines.base |
 | `agent_gateway/tools/ask_user.py` | `ask_user` 工具工厂 | engines.base |
 | `agent_gateway/tools/http.py` | httpx 客户端工厂：`trust_env=False, verify=False` | 无 |

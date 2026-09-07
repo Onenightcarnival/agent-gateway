@@ -44,5 +44,6 @@ uv run pytest tests/integration   # 使用 .env 指向的真实模型
 | [docs/05-config.md](docs/05-config.md) | 启动参数、环境变量、`gateway.json` |
 | [docs/06-test-strategy.md](docs/06-test-strategy.md) | 测试分层与用例清单 |
 | [docs/07-debug-ui.md](docs/07-debug-ui.md) | 调试页面布局与行为 |
+| [docs/08-windows-sandbox.md](docs/08-windows-sandbox.md) | Windows 受限令牌沙箱与真机验证清单 |
 
 赛题原文见 `quest/`。

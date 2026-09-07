@@ -14,6 +14,7 @@ dependencies = [
     "langchain-openai>=1.6",
     "langchain-mcp-adapters>=0.3.2",
     "openai-agents==0.22.0",
+    "pywin32>=306; sys_platform == 'win32'",
 ]
 
 [dependency-groups]

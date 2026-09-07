@@ -21,6 +21,7 @@ def test_from_env_defaults():
     assert s.max_steps == 50
     assert s.config_path == Path("gateway.json")
     assert s.ask_user is False
+    assert s.shell_sandbox is True
     assert s.model_extra_body == {"chat_template_kwargs": {"enable_thinking": False}}
 
 
@@ -46,10 +47,12 @@ def test_env_values_are_parsed():
         "GATEWAY_MAX_STEPS": "7",
         "GATEWAY_CONFIG": "/etc/gw.json",
         "GATEWAY_ASK_USER": "true",
+        "GATEWAY_SHELL_SANDBOX": "off",
         "MODEL_EXTRA_BODY": '{"top_k": 5}',
     }
     s = Settings.from_env(env)
     assert s.ask_user is True
+    assert s.shell_sandbox is False
     assert s.model_extra_body == {"top_k": 5}
     assert s.model_name == "m"
     assert s.turn_timeout == 12.5

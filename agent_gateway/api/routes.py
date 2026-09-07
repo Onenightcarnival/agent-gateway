@@ -95,7 +95,8 @@ async def health(request: Request) -> dict:
         "skills": info.skill_names if info else [],
         "sessions": len(gw.store),
         "permission_mode": gw.settings.permission_mode,
-        "shell_sandbox": Workspace(".").shell_enforced,
+        "shell_sandbox": Workspace(".", sandbox=gw.settings.shell_sandbox).shell_enforced,
+        "shell_sandbox_detail": Workspace(".", sandbox=gw.settings.shell_sandbox).shell_detail,
     }
 
 

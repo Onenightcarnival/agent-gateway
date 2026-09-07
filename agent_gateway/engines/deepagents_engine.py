@@ -48,8 +48,8 @@ log = logging.getLogger(__name__)
 class WorkspaceShellBackend(LocalShellBackend):
     """workspace-write：写、改、删限定在工作目录内；shell 经平台沙箱包装。"""
 
-    def __init__(self, directory: str) -> None:
-        self.workspace = Workspace(directory)
+    def __init__(self, directory: str, *, sandbox: bool = True) -> None:
+        self.workspace = Workspace(directory, sandbox=sandbox)
         super().__init__(root_dir=str(self.workspace.root), virtual_mode=False, inherit_env=True)
 
     def write(self, file_path: str, content: str) -> WriteResult:
@@ -76,8 +76,14 @@ class WorkspaceShellBackend(LocalShellBackend):
         return super().delete(file_path)
 
     def execute(self, command: str, *, timeout: int | None = None) -> ExecuteResponse:
-        wrapped, _ = self.workspace.sandbox_command(command)
-        return super().execute(wrapped, timeout=timeout)
+        result = self.workspace.run(command, timeout or self._default_timeout, env=self._env)
+        output = result.output
+        truncated = len(output.encode("utf-8", errors="replace")) > self._max_output_bytes
+        if truncated:
+            output = output[: self._max_output_bytes] + "\n...[truncated]"
+        if result.timed_out:
+            output += f"\n[timeout after {timeout or self._default_timeout}s]"
+        return ExecuteResponse(output=output, exit_code=result.exit_code, truncated=truncated)
 
 
 class PermissionMiddleware(AgentMiddleware):
@@ -204,7 +210,7 @@ class DeepAgentsEngine:
             http_async_client=make_async_client(),
             extra_body=self.settings.model_extra_body or None,
         )
-        backend = WorkspaceShellBackend(directory)
+        backend = WorkspaceShellBackend(directory, sandbox=self.settings.shell_sandbox)
         tools = self._session_tools(state.context, interaction)
         permission = PermissionMiddleware(
             PermissionGuard(state.context.id, interaction, self.settings)

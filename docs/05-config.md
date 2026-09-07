@@ -22,6 +22,7 @@ uv run python -m agent_gateway --engine <deepagents|openai-agents> [--port 6217]
 | | `GATEWAY_DB` | `./gateway.db` | SQLite 文件；`:memory:` 表示不落盘 |
 | | `GATEWAY_TURN_TIMEOUT` | `900` | 秒，单轮上限 |
 | | `GATEWAY_QUESTION_TIMEOUT` | `120` | 秒，反问无人回复则取默认答案 |
+| | `GATEWAY_SHELL_SANDBOX` | `on` | `off` 关闭 shell 的系统级沙箱（macOS sandbox-exec / Windows 受限令牌） |
 | | `GATEWAY_ASK_USER` | `false` | `true` 时向引擎注册 `ask_user` 反问工具；关闭时模型无法反问，`/question` 接口仍可用 |
 | | `MODEL_EXTRA_BODY` | 无 | JSON，覆盖 `gateway.json` 的 `model.extra_body` |
 | | `GATEWAY_PERMISSION_MODE` | `auto` | `auto` 直接放行，不发事件；`ask` 挂起等待回复，超时按 `once` 放行 |
@@ -88,6 +89,6 @@ GET /health
 | --- | --- | --- |
 | 读取、列举、搜索 | 允许 | 允许（skill 目录、系统文件） |
 | 创建、写入、编辑、删除文件 | 允许 | 拒绝，工具返回错误文本 |
-| shell 命令 | cwd 为工作目录 | macOS：`sandbox-exec` 拒绝工作目录、`TMPDIR`、`/tmp`、`/dev` 之外的写入；Windows / Linux：无系统级沙箱，仅由系统提示词约束 |
+| shell 命令 | cwd 为工作目录 | macOS：`sandbox-exec` 拒绝工作目录、`TMPDIR`、`/tmp`、`/dev` 之外的写入；Windows：`WRITE_RESTRICTED` 受限令牌，只能写工作目录与私有 temp（见 `08-windows-sandbox.md`）；Linux：无系统级沙箱，仅由系统提示词约束 |
 
-实现：`tools/workspace.py` 的 `Workspace` 统一做路径判定与命令包装；deepagents 用 `WorkspaceShellBackend` 覆写 `write` / `edit` / `delete` / `execute`，openai-agents 的 `LocalTools` 调用同一个 `Workspace`。`/health` 的 `shell_sandbox` 字段报告当前平台 shell 是否受系统级限制。
+实现：`tools/workspace.py` 的 `Workspace` 统一做路径判定与命令包装；deepagents 用 `WorkspaceShellBackend` 覆写 `write` / `edit` / `delete` / `execute`，openai-agents 的 `LocalTools` 调用同一个 `Workspace`。`/health` 的 `shell_sandbox` / `shell_sandbox_detail` 报告当前平台 shell 是否受系统级限制及机制名。
