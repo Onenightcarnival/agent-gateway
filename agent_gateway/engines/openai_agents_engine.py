@@ -172,7 +172,7 @@ class OpenAIAgentsEngine:
         return agent
 
     def _session_tools(self, session: SessionContext, interaction: InteractionPort) -> list[Any]:
-        local = LocalTools(session.directory, sandbox=self.settings.shell_sandbox)
+        local = LocalTools(session.directory)
         tools: list[Any] = [
             function_tool(local.read_file),
             function_tool(local.write_file),

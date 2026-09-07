@@ -80,7 +80,6 @@ class Settings:
     question_timeout: float = 120.0
     permission_mode: PermissionMode = "auto"
     ask_user: bool = False
-    shell_sandbox: bool = True
     max_steps: int = 50
     log_level: str = "INFO"
     model_extra_body_override: dict[str, Any] | None = None
@@ -133,8 +132,6 @@ class Settings:
             question_timeout=float(e.get("GATEWAY_QUESTION_TIMEOUT", "120")),
             permission_mode="ask" if e.get("GATEWAY_PERMISSION_MODE") == "ask" else "auto",
             ask_user=e.get("GATEWAY_ASK_USER", "").strip().lower() in ("1", "true", "yes", "on"),
-            shell_sandbox=e.get("GATEWAY_SHELL_SANDBOX", "on").strip().lower()
-            not in ("0", "false", "no", "off"),
             model_extra_body_override=(
                 json.loads(e["MODEL_EXTRA_BODY"]) if e.get("MODEL_EXTRA_BODY") else None
             ),
