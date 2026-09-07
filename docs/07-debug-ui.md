@@ -7,7 +7,7 @@
 ```
 ┌ 顶栏：引擎 · 模型 · 工具数 · skill 数 · SSE 连接状态 ───────────────┐
 ├ 左栏 260px ────────┬ 中栏 ──────────────────────┬ 右栏 360px ─────┤
-│ 新建会话           │ 消息列表                     │ 待处理反问/权限   │
+│ 新建会话 · 浏览…   │ 消息列表                     │ 待处理反问/权限   │
 │  directory, title  │  user / assistant / tool     │  选项按钮、放行/拒绝│
 │ 会话列表           │  tool part 折叠：参数、输出    │ 事件流            │
 │  状态徽标 idle/busy│  step-finish 分隔线           │  type、sessionID  │
@@ -21,6 +21,7 @@
 | --- | --- |
 | 页面加载 | `GET /health`、`GET /session`、`GET /event`（SSE，断开后 3 秒重连） |
 | 新建会话 | `POST /session` |
+| 浏览目录 | `GET /fs/dirs?path=`：弹窗列出根（Windows 为盘符，其他为 `/`）、上级、子目录；双击进入，`选择此目录` 回填 directory 输入框；`新建文件夹` 调 `POST /fs/dirs` |
 | 选中会话 | `GET /session/{id}/message` |
 | 发送 | `POST /session/{id}/prompt_async`（后台 fetch，不阻塞界面） |
 | 中止 | `POST /session/{id}/abort` |

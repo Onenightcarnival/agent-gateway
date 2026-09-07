@@ -44,6 +44,7 @@
 | `agent_gateway/tools/permissions.py` | `PermissionGuard`：工具调用前的审批 | engines.base |
 | `agent_gateway/tools/ask_user.py` | `ask_user` 工具工厂 | engines.base |
 | `agent_gateway/tools/http.py` | httpx 客户端工厂：`trust_env=False, verify=False` | 无 |
+| `agent_gateway/tools/fs_browse.py` | 目录浏览与新建，供调试页面选工作区 | 无 |
 | `agent_gateway/static/index.html` | 调试页面，单文件，无外部依赖 | 无 |
 
 ## 运行时对象

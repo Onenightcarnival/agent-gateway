@@ -78,6 +78,18 @@
   .ev .p { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .empty { color: var(--muted); padding: 24px; text-align: center; }
   label.chk { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 12px; }
+  .modal-bg[hidden] { display: none; }
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; z-index: 10; }
+  .modal { width: 640px; max-width: 92vw; max-height: 80vh; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+  .modal header { border-radius: 12px 12px 0 0; }
+  .modal .body { padding: 12px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+  .modal .list { border: 1px solid var(--line); border-radius: 8px; overflow: auto; height: 320px; }
+  .dir { padding: 7px 10px; border-bottom: 1px solid var(--line); cursor: pointer; display: flex; gap: 8px; align-items: center; }
+  .dir:hover, .dir.active { background: var(--user); }
+  .dir .ico { color: var(--muted); }
+  .modal footer { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--line); align-items: center; }
+  .modal footer .path { flex: 1; font-family: var(--mono); font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  select { padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
 </style>
 </head>
 <body>
@@ -94,7 +106,7 @@
   <aside>
     <div class="box stack">
       <h2>新建会话</h2>
-      <input id="new-dir" placeholder="directory，如 D:/workspace/case1">
+      <div class="row"><input id="new-dir" placeholder="directory，如 D:/workspace/case1"><button id="btn-browse" title="浏览目录">浏览…</button></div>
       <div class="row"><input id="new-title" placeholder="title（可选）"><button class="primary" id="btn-create">创建</button></div>
     </div>
     <div class="box" style="padding:8px 12px"><h2 style="margin:0">会话</h2></div>
@@ -117,6 +129,28 @@
     <div class="scroll" id="events"></div>
   </aside>
 </main>
+<div class="modal-bg" id="browser" hidden>
+  <div class="modal">
+    <header><h1>选择工作目录</h1><span style="margin-left:auto"><button id="br-close">✕</button></span></header>
+    <div class="body">
+      <div class="row">
+        <select id="br-roots" style="flex:0 0 auto"></select>
+        <button id="br-up" style="flex:0 0 auto">上级</button>
+        <input id="br-path" placeholder="路径，回车跳转">
+      </div>
+      <div class="list" id="br-list"></div>
+      <div class="row">
+        <input id="br-newname" placeholder="新文件夹名">
+        <button id="br-mkdir">新建文件夹</button>
+      </div>
+    </div>
+    <footer>
+      <span class="path" id="br-current"></span>
+      <button id="br-cancel">取消</button>
+      <button class="primary" id="br-pick">选择此目录</button>
+    </footer>
+  </div>
+</div>
 <script>
 const $ = (id) => document.getElementById(id);
 const state = { health: null, sessions: [], current: null, messages: [], pending: {}, events: [] };
@@ -179,6 +213,52 @@ $("btn-create").onclick = async () => {
   await loadSessions();
   selectSession(s.id);
 };
+
+// ---- 目录浏览 ----
+const br = { path: null, parent: null, selected: null };
+async function browse(path) {
+  const q = path ? `?path=${encodeURIComponent(path)}` : "";
+  let data;
+  try { data = await api("GET", `/fs/dirs${q}`); } catch (e) { alert(e.message); return; }
+  br.path = data.path; br.parent = data.parent; br.selected = null;
+  $("br-path").value = data.path;
+  $("br-current").textContent = data.path;
+  $("br-up").disabled = !data.parent;
+  const roots = $("br-roots");
+  roots.innerHTML = data.roots.map((r) => `<option value="${esc(r)}" ${data.path.startsWith(r) ? "selected" : ""}>${esc(r)}</option>`).join("");
+  $("br-list").innerHTML = data.entries.length
+    ? data.entries.map((e) => `<div class="dir" data-path="${esc(e.path)}" title="${esc(e.path)}"><span class="ico">▸</span>${esc(e.name)}</div>`).join("")
+    : '<div class="empty">没有子目录</div>';
+}
+function openBrowser() { $("browser").hidden = false; browse($("new-dir").value.trim() || null); }
+function closeBrowser() { $("browser").hidden = true; }
+$("btn-browse").onclick = openBrowser;
+$("br-close").onclick = closeBrowser;
+$("br-cancel").onclick = closeBrowser;
+$("browser").addEventListener("click", (e) => { if (e.target === $("browser")) closeBrowser(); });
+$("br-up").onclick = () => br.parent && browse(br.parent);
+$("br-roots").onchange = (e) => browse(e.target.value);
+$("br-path").addEventListener("keydown", (e) => { if (e.key === "Enter") browse($("br-path").value.trim()); });
+$("br-list").addEventListener("click", (e) => {
+  const row = e.target.closest("[data-path]");
+  if (!row) return;
+  document.querySelectorAll("#br-list .dir").forEach((d) => d.classList.toggle("active", d === row));
+  br.selected = row.dataset.path;
+  $("br-current").textContent = br.selected;
+});
+$("br-list").addEventListener("dblclick", (e) => { const row = e.target.closest("[data-path]"); if (row) browse(row.dataset.path); });
+$("br-mkdir").onclick = async () => {
+  const name = $("br-newname").value.trim();
+  if (!name) { $("br-newname").focus(); return; }
+  try {
+    const r = await api("POST", "/fs/dirs", { parent: br.path, name });
+    $("br-newname").value = "";
+    await browse(br.path);
+    br.selected = r.path; $("br-current").textContent = r.path;
+    document.querySelectorAll("#br-list .dir").forEach((d) => d.classList.toggle("active", d.dataset.path === r.path));
+  } catch (e) { alert(e.message); }
+};
+$("br-pick").onclick = () => { $("new-dir").value = br.selected || br.path; closeBrowser(); };
 
 // ---- 消息 ----
 async function loadMessages() {

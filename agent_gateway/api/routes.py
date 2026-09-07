@@ -15,8 +15,15 @@ from ..core.models import dump
 from ..core.store import SessionNotFound
 from ..engines.base import ModelRef
 from ..gateway import Gateway
+from ..tools import fs_browse
 from .errors import BadGateway, NotFound, ServiceUnavailable, ValidationError
-from .schemas import CreateSessionBody, PermissionReplyBody, PromptBody, QuestionReplyBody
+from .schemas import (
+    CreateSessionBody,
+    MakeDirBody,
+    PermissionReplyBody,
+    PromptBody,
+    QuestionReplyBody,
+)
 
 router = APIRouter()
 
@@ -47,6 +54,29 @@ def _session(gw: Gateway, session_id: str):
 @router.get("/ui", include_in_schema=False)
 async def debug_ui() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html", media_type="text/html; charset=utf-8")
+
+
+# ---- 目录浏览 ----
+
+
+@router.get("/fs/dirs")
+async def fs_dirs(path: str | None = None) -> dict:
+    try:
+        return fs_browse.list_dirs(path)
+    except fs_browse.DirectoryNotFound as exc:
+        raise NotFound(f"Directory not found: {exc}") from None
+
+
+@router.post("/fs/dirs")
+async def fs_mkdir(body: MakeDirBody) -> dict:
+    try:
+        return {"path": fs_browse.make_dir(body.parent, body.name)}
+    except fs_browse.DirectoryNotFound as exc:
+        raise NotFound(f"Directory not found: {exc}") from None
+    except fs_browse.DirectoryExists as exc:
+        raise ValidationError(f"Directory already exists: {exc}") from None
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from None
 
 
 # ---- 健康 ----

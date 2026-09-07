@@ -46,3 +46,8 @@ class QuestionReplyBody(Lenient):
 class PermissionReplyBody(Lenient):
     reply: Literal["once", "always", "reject"] = "once"
     message: str | None = None
+
+
+class MakeDirBody(Lenient):
+    parent: str
+    name: str
