@@ -104,7 +104,14 @@
   .session-item .del { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: none; }
   .session-item:hover .del { display: inline-flex; }
   .session-item .del:hover { color: var(--err); }
-  .group-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--faint); padding: 10px 10px 4px; }
+  .group { margin-bottom: 4px; }
+  .group-head { display: flex; align-items: center; gap: 6px; padding: 8px 8px 4px; font-size: 12px; font-weight: 600; color: var(--text-2); cursor: pointer; user-select: none; border-radius: var(--r); }
+  .group-head:hover { color: var(--text); }
+  .group-head svg.i:first-child { width: 12px; height: 12px; color: var(--faint); transition: transform .15s; }
+  .group.open .group-head svg.i:first-child { transform: rotate(90deg); }
+  .group-head svg.i:nth-child(2) { color: var(--warn); }
+  .group-head .count { font-size: 11px; font-weight: 600; color: var(--faint); background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; }
+  .group .session-item { margin-left: 8px; }
 
   /* ---- 会话区 ---- */
   .conv { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--bg); }
@@ -460,24 +467,45 @@ $("btn-inspector").onclick = () => { $("app").classList.toggle("inspector-collap
 
 /* ---------- 会话列表 ---------- */
 async function loadSessions() { state.sessions = await api("GET", "/session"); renderSessions(); renderHead(); updateComposer(); renderInfo(); }
+const collapsed = () => { try { return new Set(JSON.parse(localStorage.getItem("gw.collapsed") || "[]")); } catch { return new Set(); } };
+function toggleGroup(dir) {
+  const c = collapsed(); c.has(dir) ? c.delete(dir) : c.add(dir);
+  try { localStorage.setItem("gw.collapsed", JSON.stringify([...c])); } catch {}
+  renderSessions();
+}
+const dirName = (d) => (d || "").split(/[\\/]/).filter(Boolean).pop() || d || "(无目录)";
 function renderSessions() {
   const q = $("search").value.trim().toLowerCase();
   const list = state.sessions.filter((s) => !q || s.title.toLowerCase().includes(q) || s.id.includes(q) || (s.directory || "").toLowerCase().includes(q));
   const box = $("sessions");
   if (!list.length) { box.innerHTML = `<div class="empty">${ICON("chat")}<h3>${q ? "没有匹配的会话" : "还没有会话"}</h3><p>${q ? "换个关键词试试" : "点击上方按钮创建第一个会话"}</p></div>`; return; }
-  const sorted = [...list].sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
-  box.innerHTML = `<div class="group-label">会话 · ${sorted.length}</div>` + sorted.map((s) => `
-    <div class="session-item ${s.id === state.current ? "active" : ""}" data-id="${s.id}" title="${esc(s.directory || "")}">
-      <span class="dot ${s.status}"></span>
-      <div class="grow">
-        <div class="title truncate">${esc(s.title)}</div>
-        <div class="meta"><span class="mono">${shortId(s.id)}</span><span>·</span><span>${s.message_count} 条</span><span>·</span><span>${relTime(s.created_at)}</span></div>
+  const groups = new Map();
+  for (const s of list) { const k = s.directory || ""; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(s); }
+  const byTime = (a, b) => (b.created_at || "").localeCompare(a.created_at || "");
+  const ordered = [...groups.entries()].map(([dir, items]) => [dir, items.sort(byTime)]).sort((a, b) => byTime(a[1][0], b[1][0]));
+  const hidden = q ? new Set() : collapsed();
+  box.innerHTML = ordered.map(([dir, items]) => {
+    const busy = items.some((s) => s.status === "busy"); const open = !hidden.has(dir);
+    return `<div class="group ${open ? "open" : ""}">
+      <div class="group-head" data-group="${esc(dir)}" title="${esc(dir)}">
+        ${ICON("chev")}${ICON("folder")}<span class="truncate grow">${esc(dirName(dir))}</span>${busy ? '<span class="dot busy"></span>' : ""}<span class="count">${items.length}</span>
       </div>
-      <button class="ghost icon del" data-del="${s.id}" title="删除会话">${ICON("trash")}</button>
-    </div>`).join("");
+      ${open ? items.map((s) => `
+      <div class="session-item ${s.id === state.current ? "active" : ""}" data-id="${s.id}" title="${esc(s.directory || "")}">
+        <span class="dot ${s.status}"></span>
+        <div class="grow">
+          <div class="title truncate">${esc(s.title)}</div>
+          <div class="meta"><span class="mono">${shortId(s.id)}</span><span>·</span><span>${s.message_count} 条</span><span>·</span><span>${relTime(s.created_at)}</span></div>
+        </div>
+        <button class="ghost icon del" data-del="${s.id}" title="删除会话">${ICON("trash")}</button>
+      </div>`).join("") : ""}
+    </div>`;
+  }).join("");
 }
 $("search").oninput = renderSessions;
 $("sessions").addEventListener("click", async (e) => {
+  const g = e.target.closest("[data-group]");
+  if (g) return toggleGroup(g.dataset.group);
   const del = e.target.closest("[data-del]");
   if (del) {
     e.stopPropagation();
