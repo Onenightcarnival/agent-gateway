@@ -22,7 +22,7 @@
 
 | 组件 | 说明 |
 | --- | --- |
-| 会话分组 | 按 `directory` 分组，组头显示目录末段名（悬停看全路径）、会话数、组内有 busy 时显示脉冲点；可折叠，折叠状态存 localStorage；组按最近会话时间排序，搜索时展开全部 |
+| 会话分组 | 按 `directory` 分组，组头显示目录末段名（悬停看全路径）、会话数、组内有 busy 时显示脉冲点；可折叠，折叠状态存 localStorage；组按最近会话时间排序，搜索时展开全部；组头悬停出现「＋」，一键在该目录新建会话 |
 | 会话项 | 标题、`message_count`、相对时间、状态点（idle 绿 / busy 琥珀带脉冲）；悬停显示删除，删除弹确认 |
 | 会话头 | 标题；id 与目录各带复制按钮；状态徽标 |
 | 助手卡片 | 文本经轻量 Markdown（标题、列表、粗体、行内代码、代码块、链接）；页脚显示 `finish`、`aborted`、`error` |
@@ -31,7 +31,7 @@
 | 权限卡片 | 权限名、patterns、once / always / reject |
 | 输入区 | Enter 发送，Shift+Enter 换行；busy 时按钮变"停止"调 `/abort` |
 | 事件行 | type 芯片按类别着色（server / session / message / question / permission）、时间、会话短 id、摘要；点击展开完整 JSON；可暂停、按 type 过滤、仅当前会话 |
-| 新建会话对话框 | 目录输入 + 浏览、标题；最近使用目录（localStorage，最多 8 条） |
+| 新建会话对话框 | 目录预填为当前会话的目录，没有则用最近一次使用的目录；目录输入 + 浏览、标题；最近使用目录（localStorage，最多 8 条） |
 | 目录浏览对话框 | 根目录下拉、路径面包屑可点、子目录列表（单击选中、双击进入）、新建文件夹、选择 |
 | Toast | 操作结果与错误提示，3 秒消失 |
 
@@ -40,7 +40,7 @@
 | 触发 | 调用 |
 | --- | --- |
 | 加载 | `GET /health`、`GET /session`、`GET /question`、`GET /permission`、`GET /event`（断开 3 秒重连） |
-| 新建会话 | `POST /session`；成功后选中并记录目录 |
+| 新建会话 | `POST /session`；成功后选中并记录目录。组头「＋」直接创建，不弹窗 |
 | 选中会话 | `GET /session/{id}/message` |
 | 发送 | `POST /session/{id}/prompt_async`（后台 fetch）；本地先插入 user 气泡 |
 | 停止 | `POST /session/{id}/abort` |

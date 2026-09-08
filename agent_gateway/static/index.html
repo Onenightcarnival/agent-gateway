@@ -112,6 +112,9 @@
   .group-head svg.i:nth-child(2) { color: var(--warn); }
   .group-head .count { font-size: 11px; font-weight: 600; color: var(--faint); background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; }
   .group .session-item { margin-left: 8px; }
+  .group-head .add { display: none; margin-left: 2px; }
+  .group-head:hover .add { display: inline-flex; }
+  .group-head:hover .count { display: none; }
 
   /* ---- 会话区 ---- */
   .conv { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--bg); }
@@ -489,6 +492,7 @@ function renderSessions() {
     return `<div class="group ${open ? "open" : ""}">
       <div class="group-head" data-group="${esc(dir)}" title="${esc(dir)}">
         ${ICON("chev")}${ICON("folder")}<span class="truncate grow">${esc(dirName(dir))}</span>${busy ? '<span class="dot busy"></span>' : ""}<span class="count">${items.length}</span>
+        <button class="ghost icon add" data-newin="${esc(dir)}" title="在此目录新建会话">${ICON("plus")}</button>
       </div>
       ${open ? items.map((s) => `
       <div class="session-item ${s.id === state.current ? "active" : ""}" data-id="${s.id}" title="${esc(s.directory || "")}">
@@ -504,6 +508,8 @@ function renderSessions() {
 }
 $("search").oninput = renderSessions;
 $("sessions").addEventListener("click", async (e) => {
+  const add = e.target.closest("[data-newin]");
+  if (add) { e.stopPropagation(); return createSession(add.dataset.newin); }
   const g = e.target.closest("[data-group]");
   if (g) return toggleGroup(g.dataset.group);
   const del = e.target.closest("[data-del]");
@@ -530,8 +536,19 @@ function currentSession() { return state.sessions.find((s) => s.id === state.cur
 /* ---------- 新建会话 ---------- */
 const recentDirs = () => { try { return JSON.parse(localStorage.getItem("gw.recentDirs") || "[]"); } catch { return []; } };
 function rememberDir(d) { try { localStorage.setItem("gw.recentDirs", JSON.stringify([d, ...recentDirs().filter((x) => x !== d)].slice(0, 8))); } catch {} }
+async function createSession(directory, title) {
+  try {
+    const s = await api("POST", "/session", { directory, title: title || undefined });
+    rememberDir(directory);
+    const c = collapsed(); if (c.has(s.directory)) { c.delete(s.directory); try { localStorage.setItem("gw.collapsed", JSON.stringify([...c])); } catch {} }
+    await loadSessions(); selectSession(s.id); toast("会话已创建", "ok");
+    return s;
+  } catch (e) { toast(e.message, "err"); return null; }
+}
 function openNewSession() {
   const rec = recentDirs();
+  const cur = currentSession();
+  if (!$("new-dir").value.trim()) $("new-dir").value = (cur && cur.directory) || rec[0] || "";
   $("recent-wrap").hidden = !rec.length;
   $("recent").innerHTML = rec.map((d) => `<span class="chip" data-dir="${esc(d)}" title="${esc(d)}">${ICON("folder")}<span class="truncate" style="max-width:220px">${esc(d)}</span></span>`).join("");
   $("new-session").showModal();
@@ -542,11 +559,8 @@ $("recent").addEventListener("click", (e) => { const c = e.target.closest("[data
 $("btn-create").onclick = async () => {
   const directory = $("new-dir").value.trim();
   if (!directory) { $("new-dir").focus(); toast("请填写工作目录", "err"); return; }
-  try {
-    const s = await api("POST", "/session", { directory, title: $("new-title").value.trim() || undefined });
-    rememberDir(directory); $("new-title").value = ""; $("new-session").close();
-    await loadSessions(); selectSession(s.id); toast("会话已创建", "ok");
-  } catch (e) { toast(e.message, "err"); }
+  const s = await createSession(directory, $("new-title").value.trim());
+  if (s) { $("new-title").value = ""; $("new-session").close(); }
 };
 $("new-dir").addEventListener("keydown", (e) => { if (e.key === "Enter") $("btn-create").click(); });
 
