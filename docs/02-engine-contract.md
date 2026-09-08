@@ -65,7 +65,7 @@ class InteractionPort(Protocol):
 | 网关概念 | 实现 |
 | --- | --- |
 | 模型 | `ChatOpenAI(base_url, api_key, model, http_client, http_async_client, extra_body)` |
-| 会话目录 | 每会话 `WorkspaceShellBackend(directory)`：继承 `LocalShellBackend(virtual_mode=False, inherit_env=True)`，`write` / `edit` / `delete` 越出工作目录返回错误，`execute` 经 `Workspace.sandbox_command` 包装 |
+| 会话目录 | 每会话 `WorkspaceShellBackend(directory)`：继承 `LocalShellBackend(virtual_mode=False, inherit_env=True)`，`write` / `edit` / `delete` 越出工作目录返回错误，`execute` 改由 `ShellRunner.run` 执行 |
 | 会话记忆 | `InMemorySaver` checkpointer，`thread_id = session.id`；`history` 通过 `agent.update_state` 写入 |
 | MCP | `MultiServerMCPClient` 持久 session + `load_mcp_tools`，启动时装载一次；工具 schema 经 `normalize_tool_schema` 补齐 `required` / `additionalProperties: false`（部分代理对缺省字段的 schema 识别不稳定） |
 | skill | `create_deep_agent(skills=[dirs])` |
@@ -74,14 +74,14 @@ class InteractionPort(Protocol):
 | 事件流 | `graph.astream_events(v2)`：`on_chat_model_stream`→TextDelta，`on_chat_model_end`→ToolCallStart*+StepFinish，`on_tool_end`→ToolCallEnd |
 | 层级过滤 | 只取首个 `on_chat_model_start` / `on_tool_start` 所在深度的事件；子代理（`task` 工具）内部的模型与工具事件不进入轨迹，只保留 `task` 的调用与结果 |
 | 工具输出 | ToolMessage 取 content；`Command(update={"messages": [...]})` 取末条消息 content；其他值 JSON 序列化 |
-| 中止 | 取消迭代 Task；`execute` 中正在运行的子进程不受影响，自行结束 |
+| 中止 | 取消迭代 Task；`execute` 为同步调用，进行中的命令到超时为止 |
 
 ### openai-agents
 
 | 网关概念 | 实现 |
 | --- | --- |
 | 模型 | `OpenAIChatCompletionsModel(model, AsyncOpenAI(base_url, api_key, http_client))` + `ModelSettings(extra_body)`，`set_tracing_disabled(True)` |
-| 会话目录 | 本地工具 `read_file` / `write_file` / `list_directory` / `run_command` 以 `directory` 为根；`write_file` 越出工作目录返回错误，`run_command` 经 `Workspace.sandbox_command` 包装；写入 instructions |
+| 会话目录 | 本地工具 `read_file` / `write_file` / `list_directory` / `run_command` 以 `directory` 为根；`write_file` 越出工作目录返回错误，`run_command` 由 `ShellRunner.arun` 执行；写入 instructions |
 | 会话记忆 | 自实现内存 `Session`（`get_items/add_items/pop_item/clear_session`）；`history` 以 user/assistant 消息项预填 |
 | MCP | `MCPServerStdio` / `MCPServerStreamableHttp`，启动时 `connect()` 一次 |
 | skill | instructions 注入 skill 清单（名称、描述、绝对路径）+ 本地工具 `read_file` |

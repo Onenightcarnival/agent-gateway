@@ -3,18 +3,19 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from pathlib import Path
 
+from .shell import make_shell_runner
 from .workspace import Workspace, WorkspaceViolation
 
 MAX_OUTPUT_CHARS = 100_000
 
 
 class LocalTools:
-    def __init__(self, root: str) -> None:
+    def __init__(self, root: str, *, shell_sandbox: bool = True) -> None:
         self.workspace = Workspace(root)
         self.root = self.workspace.root
+        self.shell = make_shell_runner(self.workspace, enabled=shell_sandbox)
 
     def resolve(self, path: str | None) -> Path:
         return self.workspace.resolve(path)
@@ -50,25 +51,7 @@ class LocalTools:
 
         写入只允许在工作目录内。
         """
-        env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
-        command, _ = self.workspace.sandbox_command(command)
-        proc = await asyncio.create_subprocess_shell(
-            command,
-            cwd=str(self.root),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-            env=env,
-        )
-        try:
-            data, _ = await asyncio.wait_for(proc.communicate(), timeout_seconds)
-        except TimeoutError:
-            proc.kill()
-            await proc.wait()
-            return f"[timeout after {timeout_seconds}s]"
-        except asyncio.CancelledError:
-            proc.kill()
-            raise
-        text = data.decode("utf-8", errors="replace")
-        if len(text) > MAX_OUTPUT_CHARS:
-            text = text[:MAX_OUTPUT_CHARS] + "\n...[truncated]"
-        return f"{text}\n[exit code {proc.returncode}]"
+        result = await self.shell.arun(command, timeout_seconds)
+        if result.timed_out:
+            return f"{result.output}\n[timeout after {timeout_seconds}s]"
+        return f"{result.output}\n[exit code {result.exit_code}]"

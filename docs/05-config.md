@@ -26,6 +26,7 @@ uv run python -m agent_gateway --engine <deepagents|openai-agents> [--port 6217]
 | | `MODEL_EXTRA_BODY` | 无 | JSON，覆盖 `gateway.json` 的 `model.extra_body` |
 | | `GATEWAY_PERMISSION_MODE` | `auto` | `auto` 直接放行，不发事件；`ask` 挂起等待回复，超时按 `once` 放行 |
 | | `GATEWAY_MAX_STEPS` | `50` | 单轮 LLM 调用上限 |
+| | `GATEWAY_SHELL_SANDBOX` | `on` | `off` 关闭 shell 沙箱 |
 | | `GATEWAY_LOG_LEVEL` | `INFO` | |
 
 参数优先级：命令行 > 环境变量 > `.env` > 默认值。
@@ -88,6 +89,18 @@ GET /health
 | --- | --- | --- |
 | 读取、列举、搜索 | 允许 | 允许（skill 目录、系统文件） |
 | 创建、写入、编辑、删除文件 | 允许 | 拒绝，工具返回错误文本 |
-| shell 命令 | cwd 为工作目录 | macOS：`sandbox-exec` 拒绝工作目录、`TMPDIR`、`/tmp`、`/dev` 之外的写入；Windows / Linux：无系统级沙箱，仅由系统提示词约束 |
+| shell 命令 | cwd 为工作目录 | 见下表，按平台做系统级限制 |
 
-实现：`tools/workspace.py` 的 `Workspace` 统一做路径判定与命令包装；deepagents 用 `WorkspaceShellBackend` 覆写 `write` / `edit` / `delete` / `execute`，openai-agents 的 `LocalTools` 调用同一个 `Workspace`。`/health` 的 `shell_sandbox` 字段报告当前平台 shell 是否受系统级限制。
+### shell 沙箱
+
+| 平台 | 机制 | 可写范围 | 限制 |
+| --- | --- | --- | --- |
+| macOS | `sandbox-exec` Seatbelt 策略 | 工作目录、`TMPDIR`、`/tmp`、`/dev` | 读不限 |
+| Windows | 受限令牌：`CreateRestrictedToken(WRITE_RESTRICTED \| LUA_TOKEN \| DISABLE_MAX_PRIVILEGE)`，限制 SID = [能力 SID, Logon SID, Everyone]；工作目录与 `%TEMP%` 加能力 SID 的允许写 ACE；`CreateProcessAsUser` + Job Object（kill-on-close） | 工作目录、`%TEMP%`，以及 Everyone 可写的位置 | 读不限；网络不限；需要 NTFS；不需要管理员 |
+| Linux | 无 | 不限 | 仅系统提示词约束 |
+
+能力 SID 为随机生成的 `S-1-5-21-…`，持久化在 `~/.agent-gateway/cap_sid`，首次运行生成。工作目录的 ACE 在每次会话创建时补齐，带容器与对象继承。
+
+`GATEWAY_SHELL_SANDBOX=off` 关闭 shell 沙箱。开启时若平台不支持或初始化失败（缺 pywin32、非 NTFS、令牌创建失败），记录 ERROR 后退回无沙箱执行，`/health` 的 `shell_sandbox` 报告实际状态。
+
+实现：`tools/workspace.py` 做路径判定；`tools/shell.py` 的 `ShellRunner` 按平台选 `PosixShellRunner`（macOS 包 `sandbox-exec`）或 `WindowsShellRunner`（`tools/windows_sandbox.py`）；deepagents 的 `WorkspaceShellBackend.execute` 与 openai-agents 的 `LocalTools.run_command` 调同一个 runner。

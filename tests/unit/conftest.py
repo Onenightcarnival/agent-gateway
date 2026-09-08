@@ -37,6 +37,7 @@ def settings(tmp_path: Path) -> Settings:
         config_path=tmp_path / "gateway.json",
         db_path=None,
         ask_user=True,
+        shell_sandbox=True,
     )
 
 

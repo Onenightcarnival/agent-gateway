@@ -26,6 +26,7 @@ from ..tools.ask_user import make_ask_user_langchain_tool
 from ..tools.http import make_async_client, make_sync_client
 from ..tools.mcp_config import normalize_tool_schema, parse_mcp_servers, to_langchain_connection
 from ..tools.permissions import DENIED_MESSAGE, PermissionGuard
+from ..tools.shell import make_shell_runner
 from ..tools.skills import Skill, discover_skills
 from ..tools.workspace import Workspace, WorkspaceViolation
 from .base import (
@@ -48,8 +49,9 @@ log = logging.getLogger(__name__)
 class WorkspaceShellBackend(LocalShellBackend):
     """workspace-write：写、改、删限定在工作目录内；shell 经平台沙箱包装。"""
 
-    def __init__(self, directory: str) -> None:
+    def __init__(self, directory: str, *, shell_sandbox: bool = True) -> None:
         self.workspace = Workspace(directory)
+        self.shell = make_shell_runner(self.workspace, enabled=shell_sandbox)
         super().__init__(root_dir=str(self.workspace.root), virtual_mode=False, inherit_env=True)
 
     def write(self, file_path: str, content: str) -> WriteResult:
@@ -76,8 +78,19 @@ class WorkspaceShellBackend(LocalShellBackend):
         return super().delete(file_path)
 
     def execute(self, command: str, *, timeout: int | None = None) -> ExecuteResponse:
-        wrapped, _ = self.workspace.sandbox_command(command)
-        return super().execute(wrapped, timeout=timeout)
+        if not command or not isinstance(command, str):
+            return ExecuteResponse(
+                output="Error: Command must be a non-empty string.", exit_code=1, truncated=False
+            )
+        result = self.shell.run(command, timeout or self._default_timeout)
+        output = result.output
+        if result.timed_out:
+            output += f"\n[timeout after {timeout or self._default_timeout}s]"
+        elif result.exit_code != 0:
+            output += f"\n\nExit code: {result.exit_code}"
+        return ExecuteResponse(
+            output=output, exit_code=result.exit_code, truncated=result.truncated
+        )
 
 
 class PermissionMiddleware(AgentMiddleware):
@@ -204,7 +217,7 @@ class DeepAgentsEngine:
             http_async_client=make_async_client(),
             extra_body=self.settings.model_extra_body or None,
         )
-        backend = WorkspaceShellBackend(directory)
+        backend = WorkspaceShellBackend(directory, shell_sandbox=self.settings.shell_sandbox)
         tools = self._session_tools(state.context, interaction)
         permission = PermissionMiddleware(
             PermissionGuard(state.context.id, interaction, self.settings)
