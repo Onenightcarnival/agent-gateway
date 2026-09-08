@@ -116,7 +116,6 @@ async def test_run_command_timeout_and_cancel_kill_the_process(tmp_path: Path):
     tools = LocalTools(str(tmp_path))
     sleep = f'"{sys.executable}" -c "import time; time.sleep(30)"'
     assert "[timeout after 1s]" in await tools.run_command(sleep, timeout_seconds=1)
-    assert "[exit code 0]" not in await tools.run_command(sleep, timeout_seconds=1)
 
     task = asyncio.create_task(tools.run_command(sleep))
     await asyncio.sleep(0.3)

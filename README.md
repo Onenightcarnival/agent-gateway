@@ -19,8 +19,6 @@ curl http://localhost:6217/health
 
 浏览器打开 `http://localhost:6217/` 进入调试页面。会话与消息存于 `gateway.db`（SQLite）。
 
-权限为 workspace-write：文件只能写在会话目录内；shell 在 macOS 用 `sandbox-exec`、在 Windows 用受限令牌（pywin32，无需管理员）限制写入范围，见 [docs/05-config.md](docs/05-config.md)。
-
 ## 配置
 
 | 来源 | 内容 |
