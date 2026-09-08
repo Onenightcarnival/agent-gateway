@@ -9,6 +9,7 @@ from ..config import Settings
 from ..engines.base import InteractionPort
 
 DENIED_MESSAGE = "Permission denied by user."
+EXEMPT_TOOLS = {"ask_user"}
 
 
 class PermissionGuard:
@@ -20,7 +21,7 @@ class PermissionGuard:
         self._always: set[str] = set()
 
     def needs_ask(self, tool_name: str) -> bool:
-        if self.mode != "ask" or tool_name in self._always:
+        if self.mode != "ask" or tool_name in self._always or tool_name in EXEMPT_TOOLS:
             return False
         return not self.ask_tools or tool_name in self.ask_tools
 

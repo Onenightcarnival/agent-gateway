@@ -213,3 +213,28 @@ async def test_shell_write_outside_workspace_is_blocked_on_macos(tmp_path: Path,
     out = await tools.run_command('echo hi > "$TMPDIR/scratch.txt"')
     assert "[exit code 0]" in out
     assert (tmp_path / "tmp" / "scratch.txt").exists()
+
+
+# ---- permissions ----
+
+
+async def test_ask_user_is_exempt_from_permission_checks(tmp_path: Path):
+    from agent_gateway.config import Settings
+    from agent_gateway.tools.permissions import PermissionGuard
+
+    asked = []
+
+    class Port:
+        async def ask_question(self, *a):
+            return [[]]
+
+        async def ask_permission(self, session_id, permission, patterns):
+            asked.append(permission)
+            return "reject"
+
+    s = Settings(engine="e", model_base_url="u", model_api_key="k", config_path=tmp_path / "x.json")
+    s.permission_mode = "ask"
+    guard = PermissionGuard("s", Port(), s)
+    assert await guard.allow("ask_user", {"question": "?"}) is True
+    assert await guard.allow("run_command", {"command": "ls"}) is False
+    assert asked == ["tool.run_command"]

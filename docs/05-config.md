@@ -56,7 +56,7 @@ uv run python -m agent_gateway --engine <deepagents|openai-agents> [--port 6217]
 | `system_prompt` / `system_prompt_file` | 二选一，`file` 优先；都缺省时使用内置提示词 |
 | `mcpServers` | 与 Claude Desktop / Cursor 的 `mcpServers` 格式一致。有 `command` 为 stdio；有 `url` 按 `type` 取 `streamable-http`（默认）或 `sse` |
 | `skills` | skill 根目录列表，相对路径基于配置文件所在目录；每个子目录含 `SKILL.md` |
-| `permissions.ask` | 权限模式为 `ask` 时需要审批的工具名；为空表示所有工具都审批。回复 `always` 后同会话内该工具不再询问 |
+| `permissions.ask` | 权限模式为 `ask` 时需要审批的工具名；为空表示所有工具都审批（`ask_user` 始终豁免）。回复 `always` 后同会话内该工具不再询问 |
 
 ## Skill 目录
 
